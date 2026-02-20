@@ -170,37 +170,50 @@ document.addEventListener("DOMContentLoaded", function() {
     const searchInput = document.getElementById("allergen-search");
     const form = document.getElementById("allergen-transfer-form");
 
-    // TOAST NOTIFICATION LOGIC
-    const successMsg = document.querySelector('.allergen-success-msg');
-    if (successMsg) {
-        setTimeout(() => {
-            successMsg.style.top = '30px';
-            successMsg.style.opacity = '1';
-        }, 100);
+    // --- ЛОГІКА ПАМ'ЯТІ СТАНУ ---
+    const openModal = () => { 
+        if(modal) {
+            modal.style.display = "block"; 
+            sessionStorage.setItem('allergenModalOpen', 'true'); // Запам'ятовуємо, що відкрили
+        }
+    };
+    
+    const closeModal = () => { 
+        if(modal) {
+            modal.style.display = "none"; 
+            sessionStorage.removeItem('allergenModalOpen'); // Видаляємо пам'ять при закритті
+        }
+    };
 
-        setTimeout(() => {
-            successMsg.style.top = '20px';
-            successMsg.style.opacity = '0';
-            setTimeout(() => successMsg.remove(), 500);
-        }, 3000);
+    // ПЕРЕВІРКА ПРИ ЗАВАНТАЖЕННІ: чи було вікно відкрите раніше?
+    if (sessionStorage.getItem('allergenModalOpen') === 'true') {
+        modal.style.display = "block";
     }
 
-    // MODAL ACTIONS
-    const openModal = () => { if(modal) modal.style.display = "block"; };
-    const closeModal = () => { if(modal) modal.style.display = "none"; };
-    
-    if(icon) icon.onclick = openModal;
-    if(closeBtn) closeBtn.onclick = closeModal;
-    window.onclick = (e) => { if(e.target === modal) closeModal(); };
-
-    // AUTO-OPEN AFTER REDIRECT
+    // Також залишаємо авто-відкриття після редіректу (для надійності)
     const params = new URLSearchParams(window.location.search);
     if (params.has('allergen_updated')) {
         openModal();
         window.history.replaceState({}, document.title, window.location.pathname);
     }
+    // ----------------------------
 
-    // TRANSFER BUTTONS
+    // Стандартні дії
+    if(icon) icon.onclick = openModal;
+    if(closeBtn) closeBtn.onclick = closeModal;
+    window.onclick = (e) => { if(e.target === modal) closeModal(); };
+
+    // Toast Notification (сповіщення про успіх)
+    const successMsg = document.querySelector('.allergen-success-msg');
+    if (successMsg) {
+        setTimeout(() => { successMsg.style.top = '30px'; successMsg.style.opacity = '1'; }, 100);
+        setTimeout(() => {
+            successMsg.style.top = '20px'; successMsg.style.opacity = '0';
+            setTimeout(() => successMsg.remove(), 500);
+        }, 3000);
+    }
+
+    // Кнопки перенесення
     document.getElementById("btn-add").onclick = () => {
         Array.from(availList.selectedOptions).forEach(opt => selectedList.appendChild(opt));
     };
@@ -211,24 +224,16 @@ document.addEventListener("DOMContentLoaded", function() {
         });
     };
 
-    // DOUBLE CLICK ACTIONS
-    availList.addEventListener('dblclick', () => document.getElementById("btn-add").click());
-    selectedList.addEventListener('dblclick', () => document.getElementById("btn-remove").click());
-
-    // SEARCH & FILTER SYNC
+    // Фільтрація та Пошук
     const runFilters = () => {
         const query = searchInput.value.toLowerCase();
         const category = groupFilter.value;
-        const options = availList.querySelectorAll('option');
-
-        options.forEach(opt => {
+        availList.querySelectorAll('option').forEach(opt => {
             const name = opt.text.toLowerCase();
             const aliases = opt.getAttribute('data-aliases') ? opt.getAttribute('data-aliases').toLowerCase() : '';
             const groupId = opt.getAttribute('data-group');
-
             const matchesSearch = name.includes(query) || aliases.includes(query);
             const matchesGroup = (category === 'all' || groupId === category);
-
             opt.style.display = (matchesSearch && matchesGroup) ? 'block' : 'none';
         });
     };
@@ -236,10 +241,10 @@ document.addEventListener("DOMContentLoaded", function() {
     if(searchInput) searchInput.oninput = runFilters;
     if(groupFilter) groupFilter.onchange = runFilters;
 
-    // PRE-SUBMIT SELECT ALL
     if(form) {
         form.onsubmit = () => {
             Array.from(selectedList.options).forEach(opt => opt.selected = true);
+            // Перед відправкою ми НЕ видаляємо sessionStorage, щоб вікно відкрилося після рефрешу
         };
     }
 });
