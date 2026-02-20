@@ -2224,9 +2224,9 @@ function wp_normalize_path( $path ) {
  */
 function get_temp_dir() {
 	static $temp = '';
-	if ( defined( 'WP_TEMP_DIR' ) ) {
-		return trailingslashit( WP_TEMP_DIR );
-	}
+	if ( ! defined( 'WP_TEMP_DIR' ) ) {
+    define( 'WP_TEMP_DIR', ABSPATH . 'wp-content/tmp' );
+}
 
 	if ( $temp ) {
 		return trailingslashit( $temp );
@@ -9227,32 +9227,32 @@ function wp_verify_fast_hash(
 	return hash_equals( $hash, wp_fast_hash( $message ) );
 }
 /**
- * Головне меню керування алергенами
+ * Register Allergen Management Menu in Admin Panel
  */
 add_action('admin_menu', 'allergen_admin_menu_pro');
 
 function allergen_admin_menu_pro() {
-    add_menu_page('Алергени', 'Алергени', 'manage_options', 'allergen-main', 'render_allergen_page_pro', 'dashicons-shield-alt', 6);
-    add_submenu_page('allergen-main', 'Групи', 'Групи алергенів', 'manage_options', 'allergen-groups', 'render_groups_page_pro');
+    add_menu_page('Allergens', 'Allergens', 'manage_options', 'allergen-main', 'render_allergen_page_pro', 'dashicons-shield-alt', 6);
+    add_submenu_page('allergen-main', 'Groups', 'Allergen Groups', 'manage_options', 'allergen-groups', 'render_groups_page_pro');
 }
 
 /**
- * СТОРІНКА АЛЕРГЕНІВ (З вкладками та СИНОНІМАМИ)
+ * ALLERGENS PAGE (With Tabs and Synonyms)
  */
 function render_allergen_page_pro() {
     global $wpdb;
     $tab = isset($_GET['tab']) ? $_GET['tab'] : 'list';
     $table = 'allergens';
-    $alias_table = 'allergen_aliases'; // Назва таблиці синонімів
+    $alias_table = 'allergen_aliases'; 
 
-    // Обробка видалення
+    // Handle Deletion
     if (isset($_GET['del'])) {
         $wpdb->delete($table, ['allergen_id' => intval($_GET['del'])]);
-        $wpdb->delete($alias_table, ['allergen_id' => intval($_GET['del'])]); // Видаляємо і синоніми
-        echo '<div class="updated"><p>Видалено успішно!</p></div>';
+        $wpdb->delete($alias_table, ['allergen_id' => intval($_GET['del'])]); 
+        echo '<div class="updated"><p>Successfully deleted!</p></div>';
     }
 
-    // Обробка додавання/оновлення
+    // Handle Add/Update
     if (isset($_POST['save_allergen'])) {
         $allergen_data = [
             'allergen_name' => sanitize_text_field($_POST['name']),
@@ -9268,8 +9268,8 @@ function render_allergen_page_pro() {
             $allergen_id = $wpdb->insert_id;
         }
 
-        // --- ЛОГІКА СИНОНІМІВ ---
-        $wpdb->delete($alias_table, ['allergen_id' => $allergen_id]); // Очищуємо старі
+        // --- SYNONYMS LOGIC ---
+        $wpdb->delete($alias_table, ['allergen_id' => $allergen_id]); // Clear old
         if (!empty($_POST['aliases'])) {
             $aliases = explode(',', $_POST['aliases']);
             foreach ($aliases as $alias) {
@@ -9287,15 +9287,16 @@ function render_allergen_page_pro() {
         echo '<script>window.location.href="admin.php?page=allergen-main&tab=list";</script>';
     }
 
-    echo '<div class="wrap"><h1>Керування Алергенами</h1>';
+    echo '<div class="wrap"><h1>Allergen Management</h1>';
     
+    // Tabs
     echo '<h2 class="nav-tab-wrapper">
-        <a href="?page=allergen-main&tab=list" class="nav-tab '.($tab=='list'?'nav-tab-active':'').'">Список</a>
-        <a href="?page=allergen-main&tab=add" class="nav-tab '.($tab=='add'?'nav-tab-active':'').'">+ Додати новий</a>
+        <a href="?page=allergen-main&tab=list" class="nav-tab '.($tab=='list'?'nav-tab-active':'').'">Allergen List</a>
+        <a href="?page=allergen-main&tab=add" class="nav-tab '.($tab=='add'?'nav-tab-active':'').'">+ Add New Allergen</a>
     </h2>';
 
     if ($tab == 'list') {
-        // Запит отримує алергени та зліплює синоніми в один рядок для відображення
+        // Query to get allergens with grouped synonyms
         $items = $wpdb->get_results("
             SELECT a.*, g.group_name, GROUP_CONCAT(al.alias_name SEPARATOR ', ') as synonyms 
             FROM $table a 
@@ -9305,7 +9306,7 @@ function render_allergen_page_pro() {
         ");
 
         echo '<table class="wp-list-table widefat fixed striped" style="margin-top:20px;">
-                <thead><tr><th>Назва</th><th>Синоніми (Технічні)</th><th>Варіант</th><th>Група</th><th>Дії</th></tr></thead><tbody>';
+                <thead><tr><th>Name</th><th>Synonyms (Technical)</th><th>Variant</th><th>Group</th><th>Actions</th></tr></thead><tbody>';
         foreach ($items as $item) {
             echo "<tr>
                 <td><strong>{$item->allergen_name}</strong></td>
@@ -9313,16 +9314,16 @@ function render_allergen_page_pro() {
                 <td>{$item->product_variant}</td>
                 <td>".($item->group_name ? $item->group_name : '—')."</td>
                 <td>
-                    <a href='?page=allergen-main&tab=add&edit={$item->allergen_id}'>Редагувати</a> | 
-                    <a href='?page=allergen-main&del={$item->allergen_id}' style='color:red;' onclick='return confirm(\"Видалити?\")'>Видалити</a>
+                    <a href='?page=allergen-main&tab=add&edit={$item->allergen_id}'>Edit</a> | 
+                    <a href='?page=allergen-main&del={$item->allergen_id}' style='color:red;' onclick='return confirm(\"Are you sure you want to delete this?\")'>Delete</a>
                 </td></tr>";
         }
         echo '</tbody></table>';
     } else {
+        // Add/Edit Form
         $edit_id = isset($_GET['edit']) ? intval($_GET['edit']) : 0;
         $row = $edit_id ? $wpdb->get_row("SELECT * FROM $table WHERE allergen_id = $edit_id") : null;
         
-        // Отримуємо існуючі синоніми для редагування
         $existing_aliases = $edit_id ? $wpdb->get_col("SELECT alias_name FROM $alias_table WHERE allergen_id = $edit_id") : [];
         $groups = $wpdb->get_results("SELECT * FROM allergen_groups");
         ?>
@@ -9330,25 +9331,25 @@ function render_allergen_page_pro() {
             <form method="post">
                 <input type="hidden" name="id" value="<?php echo $edit_id; ?>">
                 <table class="form-table">
-                    <tr><th>Головна назва:</th><td><input type="text" name="name" value="<?php echo $row?$row->allergen_name:''; ?>" required class="regular-text"></td></tr>
+                    <tr><th>Main Name:</th><td><input type="text" name="name" value="<?php echo $row?$row->allergen_name:''; ?>" required class="regular-text"></td></tr>
                     
                     <tr>
-                        <th>Синоніми (через кому):</th>
+                        <th>Synonyms (comma separated):</th>
                         <td>
-                            <textarea name="aliases" rows="3" class="large-text" placeholder="Яблуко, яблучний, яблука..."><?php echo implode(', ', $existing_aliases); ?></textarea>
-                            <p class="description">Введіть різні варіації назви. Це допоможе пошуку знаходити цей алерген.</p>
+                            <textarea name="aliases" rows="3" class="large-text" placeholder="Apple, apple-based, apples..."><?php echo implode(', ', $existing_aliases); ?></textarea>
+                            <p class="description">Enter different variations of the name. This helps the search engine find this allergen.</p>
                         </td>
                     </tr>
 
-                    <tr><th>Варіант:</th><td><input type="text" name="variant" value="<?php echo $row?$row->product_variant:''; ?>" class="regular-text"></td></tr>
-                    <tr><th>Група:</th><td>
+                    <tr><th>Variant:</th><td><input type="text" name="variant" value="<?php echo $row?$row->product_variant:''; ?>" class="regular-text"></td></tr>
+                    <tr><th>Group:</th><td>
                         <select name="group_id" style="width: 25em;">
-                            <option value="0">Без групи</option>
+                            <option value="0">No Group</option>
                             <?php foreach($groups as $g) echo "<option value='{$g->group_id}' ".($row && $row->group_id==$g->group_id?'selected':'').">{$g->group_name}</option>"; ?>
                         </select>
                     </td></tr>
                 </table>
-                <p><input type="submit" name="save_allergen" class="button button-primary" value="Зберегти алерген та синоніми"></p>
+                <p><input type="submit" name="save_allergen" class="button button-primary" value="Save Allergen & Synonyms"></p>
             </form>
         </div>
         <?php
@@ -9357,30 +9358,33 @@ function render_allergen_page_pro() {
 }
 
 /**
- * СТОРІНКА ГРУП (Залишається без змін)
+ * GROUPS PAGE
  */
 function render_groups_page_pro() {
     global $wpdb;
     $table = 'allergen_groups';
     
     if (isset($_POST['save_group'])) {
-        $wpdb->insert($table, ['group_name' => sanitize_text_field($_POST['gname']), 'description' => sanitize_textarea_field($_POST['gdesc'])]);
+        $wpdb->insert($table, [
+            'group_name' => sanitize_text_field($_POST['gname']), 
+            'description' => sanitize_textarea_field($_POST['gdesc'])
+        ]);
     }
 
-    echo '<div class="wrap"><h1>Групи алергенів</h1>';
+    echo '<div class="wrap"><h1>Allergen Groups</h1>';
     ?>
     <div style="display: flex; gap: 20px; margin-top: 20px;">
         <div class="card" style="flex: 1; height: fit-content;">
-            <h3>Створити нову групу</h3>
+            <h3>Create New Group</h3>
             <form method="post">
-                <p><label>Назва групи:</label><br><input type="text" name="gname" required style="width:100%"></p>
-                <p><label>Опис:</label><br><textarea name="gdesc" style="width:100%"></textarea></p>
-                <p><input type="submit" name="save_group" class="button button-primary" value="Створити групу"></p>
+                <p><label>Group Name:</label><br><input type="text" name="gname" required style="width:100%"></p>
+                <p><label>Description:</label><br><textarea name="gdesc" style="width:100%"></textarea></p>
+                <p><input type="submit" name="save_group" class="button button-primary" value="Create Group"></p>
             </form>
         </div>
         <div style="flex: 2;">
             <table class="wp-list-table widefat fixed striped">
-                <thead><tr><th>Назва групи</th><th>Опис</th></tr></thead>
+                <thead><tr><th>Group Name</th><th>Description</th></tr></thead>
                 <tbody>
                     <?php
                     $groups = $wpdb->get_results("SELECT * FROM $table");
