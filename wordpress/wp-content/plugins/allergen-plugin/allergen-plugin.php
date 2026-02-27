@@ -377,3 +377,97 @@ function allergen_engine_filter_recipes($content) {
     if (empty($saved_ids)) {
         return $content; // No allergies — show the recipe
     }}
+    // =========================================================================
+// 5. RECIPE GRID SHORTCODE (VISUAL BLOCKS)
+// =========================================================================
+add_shortcode('recipe_grid', 'allergen_recipe_grid_shortcode');
+
+function allergen_recipe_grid_shortcode() {
+    $args = array(
+        'post_type'      => 'recipe',
+        'posts_per_page' => 6,
+        'orderby'        => 'date',
+        'order'          => 'DESC'
+    );
+
+    $query = new WP_Query($args);
+    $output = '<div class="recipe-grid-container">';
+
+    if ($query->have_posts()) {
+        while ($query->have_posts()) {
+            $query->the_post();
+            $img = get_the_post_thumbnail_url(get_the_ID(), 'medium');
+            if (!$img) $img = 'https://via.placeholder.com/300x200?text=No+Image';
+
+            $output .= '
+            <div class="recipe-card-block">
+                <div class="recipe-card-image" style="background-image: url(' . esc_url($img) . ');"></div>
+                <div class="recipe-card-content">
+                    <h4>' . get_the_title() . '</h4>
+                    <p>' . wp_trim_words(get_the_excerpt(), 10) . '</p>
+                    <a href="' . get_permalink() . '" class="recipe-card-btn">View Recipe</a>
+                </div>
+            </div>';
+        }
+        wp_reset_postdata();
+    } else {
+        $output .= '<p>No recipes found. Add some in the admin panel!</p>';
+    }
+
+    $output .= '</div>';
+
+    // Додаємо CSS стилі для сітки
+    $output .= '
+    <style>
+    .recipe-grid-container {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+        gap: 25px;
+        padding: 20px 0;
+    }
+    .recipe-card-block {
+        background: white;
+        border-radius: 12px;
+        overflow: hidden;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        transition: transform 0.3s ease;
+        border: 1px solid #eee;
+    }
+    .recipe-card-block:hover {
+        transform: translateY(-5px);
+    }
+    .recipe-card-image {
+        height: 180px;
+        background-size: cover;
+        background-position: center;
+    }
+    .recipe-card-content {
+        padding: 15px;
+    }
+    .recipe-card-content h4 {
+        margin: 0 0 10px 0;
+        font-size: 18px;
+        color: #333;
+    }
+    .recipe-card-content p {
+        font-size: 14px;
+        color: #666;
+        margin-bottom: 15px;
+    }
+    .recipe-card-btn {
+        display: inline-block;
+        padding: 8px 15px;
+        background: #ff4d4d;
+        color: white !important;
+        text-decoration: none !important;
+        border-radius: 5px;
+        font-weight: bold;
+        font-size: 14px;
+    }
+    .recipe-card-btn:hover {
+        background: #d94343;
+    }
+    </style>';
+
+    return $output;
+}
