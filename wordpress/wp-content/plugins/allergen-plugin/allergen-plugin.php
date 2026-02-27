@@ -88,13 +88,44 @@ function allergen_profile_final_integrated_render() {
 
     if (!is_user_logged_in()) {
         ?>
-        <div style="text-align: center; padding: 40px 20px;">
+        <div style="text-align: center; padding: 20px;">
             <h3 style="font-size: 24px; color: #d9534f; margin-bottom: 15px;">🔒 Authentication Required</h3>
-            <p style="font-size: 16px; color: #555; margin-bottom: 30px;">
-                Every user has their own individual allergen profile. Please log in or register to create and manage your personal restrictions.
+            <p style="font-size: 14px; color: #555; margin-bottom: 25px;">
+                Create your individual allergen profile to protect yourself.
             </p>
-            <a href="<?php echo esc_url(wp_login_url(get_permalink())); ?>" class="save-btn" style="display: inline-block; width: auto; padding: 12px 30px; text-decoration: none; margin-right: 15px;">Log In</a>
-            <a href="<?php echo esc_url(wp_registration_url()); ?>" class="move-btn" style="display: inline-block; width: auto; padding: 12px 30px; text-decoration: none;">Register</a>
+
+            <div style="display: flex; gap: 40px; justify-content: center; text-align: left;">
+                
+                <div style="flex: 1; background: #f9f9f9; padding: 20px; border-radius: 10px; border: 1px solid #ddd;">
+                    <h4 style="margin-top:0;">Вже є акаунт?</h4>
+                    <form method="post" action="<?php echo esc_url(site_url('wp-login.php', 'login_post')); ?>">
+                        <label style="display:block; margin-bottom:5px; font-size:13px;">Логін або Email:</label>
+                        <input type="text" name="log" required style="width:100%; padding:10px; margin-bottom:15px; border:1px solid #ccc; border-radius:5px;">
+                        
+                        <label style="display:block; margin-bottom:5px; font-size:13px;">Пароль:</label>
+                        <input type="password" name="pwd" required style="width:100%; padding:10px; margin-bottom:15px; border:1px solid #ccc; border-radius:5px;">
+                        
+                        <button type="submit" class="save-btn" style="margin-top:0; padding: 12px;">Увійти</button>
+                    </form>
+                </div>
+
+                <div style="flex: 1; background: #fff0f0; padding: 20px; border-radius: 10px; border: 1px solid #ffcccc;">
+                    <h4 style="margin-top:0; color:#d9534f;">Новий користувач</h4>
+                    <form method="post" action="">
+                        <label style="display:block; margin-bottom:5px; font-size:13px;">Ім'я користувача:</label>
+                        <input type="text" name="reg_username" required style="width:100%; padding:10px; margin-bottom:10px; border:1px solid #ccc; border-radius:5px;">
+                        
+                        <label style="display:block; margin-bottom:5px; font-size:13px;">Email:</label>
+                        <input type="email" name="reg_email" required style="width:100%; padding:10px; margin-bottom:10px; border:1px solid #ccc; border-radius:5px;">
+                        
+                        <label style="display:block; margin-bottom:5px; font-size:13px;">Пароль:</label>
+                        <input type="password" name="reg_password" minlength="6" required style="width:100%; padding:10px; margin-bottom:15px; border:1px solid #ccc; border-radius:5px;">
+                        
+                        <button type="submit" name="allergen_custom_register" class="move-btn" style="width:100%; background:#ff4d4d; color:white; border:none; padding:12px;">Зареєструватися</button>
+                    </form>
+                </div>
+
+            </div>
         </div>
         <?php
     } else {
@@ -529,4 +560,88 @@ function allergen_profile_cleanup_on_user_delete($user_id) {
     global $wpdb;
     // Видаляємо всі записи алергенів для цього user_id
     $wpdb->delete('user_allergens_map', array('user_id' => $user_id), array('%d'));
+}
+// =========================================================================
+// 6. КАСТОМНАЯ РЕГИСТРАЦИЯ И ПОДТВЕРЖДЕНИЕ EMAIL ВНУТРИ ПЛАГИНА
+// =========================================================================
+
+// Обработка отправки формы регистрации
+add_action('init', 'allergen_custom_process_registration');
+function allergen_custom_process_registration() {
+    if (isset($_POST['allergen_custom_register']) && !is_user_logged_in()) {
+        $username = sanitize_user($_POST['reg_username']);
+        $email    = sanitize_email($_POST['reg_email']);
+        $password = $_POST['reg_password'];
+
+        // Проверки
+        if (username_exists($username)) {
+            wp_die('Помилка: Таке ім\'я користувача вже існує. <a href="'.home_url().'">Повернутися</a>');
+        }
+        if (email_exists($email)) {
+            wp_die('Помилка: Цей Email вже зареєстрований. <a href="'.home_url().'">Повернутися</a>');
+        }
+        if (empty($password) || strlen($password) < 6) {
+            wp_die('Помилка: Пароль має містити мінімум 6 символів. <a href="'.home_url().'">Повернутися</a>');
+        }
+
+        // Создаем пользователя
+        $user_id = wp_create_user($username, $password, $email);
+
+        if (!is_wp_error($user_id)) {
+            // Генерируем уникальный ключ активации
+            $activation_key = wp_generate_password(20, false);
+            
+            // Записываем ключ и статус "не активирован"
+            update_user_meta($user_id, 'allergen_activation_key', $activation_key);
+            update_user_meta($user_id, 'allergen_is_activated', '0');
+
+            // Отправляем письмо
+            $activation_link = add_query_arg([
+                'allergen_activate' => $activation_key,
+                'uid' => $user_id
+            ], home_url('/'));
+
+            $subject = 'Підтвердження реєстрації на сайті';
+            $message = "Вітаємо, $username!\n\nЩоб завершити реєстрацію та отримати доступ до профілю алергенів, перейдіть за цим посиланням:\n$activation_link\n\nЯкщо ви не реєструвалися, просто проігноруйте цей лист.";
+            
+            wp_mail($email, $subject, $message);
+
+            wp_die('Реєстрація майже завершена! Ми надіслали лист на <b>' . esc_html($email) . '</b>. Будь ласка, перейдіть за посиланням у листі для активації акаунта. <a href="'.home_url().'">На головну</a>');
+        } else {
+            wp_die($user_id->get_error_message());
+        }
+    }
+}
+
+// Перехват клика по ссылке активации из письма
+add_action('init', 'allergen_process_activation_link');
+function allergen_process_activation_link() {
+    if (isset($_GET['allergen_activate']) && isset($_GET['uid'])) {
+        $user_id = intval($_GET['uid']);
+        $key = sanitize_text_field($_GET['allergen_activate']);
+
+        $saved_key = get_user_meta($user_id, 'allergen_activation_key', true);
+
+        if ($key === $saved_key) {
+            // Активируем пользователя
+            update_user_meta($user_id, 'allergen_is_activated', '1');
+            delete_user_meta($user_id, 'allergen_activation_key'); // Удаляем ключ в целях безопасности
+
+            wp_die('Ваш акаунт успішно активовано! Тепер ви можете увійти. <a href="'.wp_login_url().'">Увійти</a>');
+        } else {
+            wp_die('Помилка: Невірний або застарілий ключ активації. <a href="'.home_url().'">На головну</a>');
+        }
+    }
+}
+
+// Блокировка входа для неактивированных пользователей
+add_filter('wp_authenticate_user', 'allergen_block_unverified_login', 10, 2);
+function allergen_block_unverified_login($user, $password) {
+    if (is_a($user, 'WP_User')) {
+        $is_activated = get_user_meta($user->ID, 'allergen_is_activated', true);
+        if ($is_activated === '0') {
+            return new WP_Error('not_activated', '<strong>Помилка</strong>: Ваш акаунт ще не активовано. Будь ласка, перевірте вашу електронну пошту.');
+        }
+    }
+    return $user;
 }
