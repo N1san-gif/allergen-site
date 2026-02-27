@@ -1,0 +1,22 @@
+#wppb-meta-box-fields-wrapper-restriction-redirect-url,
+.wppb-meta-box-field-wrapper-custom-redirect-url:not(.wppb-content-restriction-enabled),
+.wppb-meta-box-field-wrapper-custom-messages {
+    display: none;
+}
+
+#wppb-meta-box-fields-wrapper-restriction-redirect-url.wppb-content-restriction-enabled,
+.wppb-meta-box-field-wrapper-custom-messages.wppb-content-restriction-enabled {
+    display: block;
+}
+
+.wppb-meta-box-field-wrapper-custom-redirect-url.wppb-content-restriction-enabled {
+    display: flex;
+}
+
+#wppb_post_content_restriction .cozmoslabs-description:not(.cozmoslabs-description-align-right, .cozmoslabs-description-space-left, .cozmoslabs-toggle-description p) {
+    flex-basis: 100%;
+}
+
+#wppb_post_content_restriction .cozmoslabs-checkbox-list input[type="checkbox"]:disabled + label {
+    opacity: 0.6;
+}

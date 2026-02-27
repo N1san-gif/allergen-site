@@ -1,0 +1,86 @@
+.wppb-serial-wrap{
+    margin:40px 0;
+}
+
+.wppb-dismiss-notification{
+    position:absolute;
+    right:0px;
+    top:50%;
+    margin-top:-7px;
+}
+.pms-cross-promo .wppb-dismiss-notification{
+	right: 10px;
+	margin-top:-10px;
+}
+
+div.wppb-serial-notification p{
+    padding-right: 50px;
+    position:relative;
+}
+.pms-cross-promo{
+	position: relative;
+	background-color: #fff;
+	border-left: 4px solid #d54e21;
+	box-shadow: 0 1px 1px 0 rgba(0, 0, 0, 0.1);
+	display: block;
+	font-size: 14px;
+	line-height: 19px;
+	margin: 35px 20px 0 2px;
+	padding: 11px 15px;
+	text-align: left;
+
+	color: #fff;
+	background: #5693d3;
+}
+.pms-cross-promo a{
+	padding: 0 3px;
+	color:#fff;
+	border-radius: 2px;
+}
+.pms-cross-promo a:hover{
+	background: #fff;
+	color: #5693d3;
+	text-decoration: none;
+}
+.wppb-review-notice button.notice-dismiss{
+	display: none;
+}
+
+
+/* hide menu items */
+.wp-submenu a[href="admin.php?page=profile-builder-private-website"],
+.wp-submenu a[href="admin.php?page=profile-builder-admin-bar-settings"],
+.wp-submenu a[href="admin.php?page=profile-builder-content_restriction"],
+.wp-submenu a[href="admin.php?page=admin-email-customizer"],
+.wp-submenu a[href="admin.php?page=user-email-customizer"],
+.wp-submenu a[href="admin.php?page=profile-builder-toolbox-settings"],
+.wp-submenu a[href="admin.php?page=profile-builder-two-factor-authentication"] {
+	display:none !important;
+}
+
+
+/***********************************************************/
+/* WordPress Admin Menu Item
+/***********************************************************/
+
+body.admin-color-fresh ul#adminmenu .toplevel_page_profile-builder a.menu-top .wp-menu-image img {
+	display: none;
+}
+
+body.admin-color-fresh ul#adminmenu .toplevel_page_profile-builder a.menu-top .wp-menu-image:after {
+	content: url("../images/pb-menu-icon.svg");
+	position: absolute;
+	top: 5px;
+	left: 7px;
+	opacity: 0.6;
+}
+
+body.admin-color-fresh ul#adminmenu .toplevel_page_profile-builder.opensub a.menu-top .wp-menu-image:after,
+body.admin-color-fresh ul#adminmenu .toplevel_page_profile-builder:not(.wp-menu-open) a.menu-top:hover .wp-menu-image:after {
+	content: url("../images/pb-menu-icon-hover.svg");
+	opacity: 1;
+}
+
+body.admin-color-fresh ul#adminmenu .toplevel_page_profile-builder.wp-menu-open a.menu-top .wp-menu-image:after {
+	opacity: 1;
+}

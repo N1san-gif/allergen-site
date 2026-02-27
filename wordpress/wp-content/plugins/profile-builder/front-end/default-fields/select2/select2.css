@@ -1,0 +1,19 @@
+/* Select 2 Field */
+
+.wppb-select2 span.select2-container,
+.wppb-select2-multiple span.select2-container {
+    width: 69.9% !important;
+    float: left;
+}
+
+.select2-container--open input.select2-search__field {
+    outline: none;
+    padding: 5px 10px;
+}
+
+@media screen and (max-width: 500px){
+    .wppb-select2 span.select2-container,
+    .wppb-select2-multiple span.select2-container {
+        width: 100% !important;
+    }
+}

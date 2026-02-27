@@ -1,0 +1,226 @@
+.mb-table-container pre {
+	display:inline-block;
+	vertical-align:top;
+	margin:0;
+	white-space: -moz-pre-wrap;
+    white-space: -pre-wrap;
+    white-space: -o-pre-wrap;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+.wck-edit,
+.wck-delete,
+.wck-number {
+	text-align:center !important;
+}
+
+.wck-number {
+    width:50px;
+}
+
+.wck-edit,
+.wck-delete{
+    width:100px;
+}
+
+td.wck-number {
+	cursor:move;
+}
+
+.not-sortable td.wck-number {
+	cursor:auto;
+}
+
+.wck-edit .button-secondary {
+    width: 80px;
+    height: 30px;
+    margin: 0 auto;
+}
+
+.wppb-delete-all-fields,
+.mbdelete,
+.wck-remove-upload {
+	color:#e76054 !important;
+    text-decoration: none;
+	cursor:pointer;
+}
+
+.wppb-delete-all-fields:hover,
+.mbdelete:hover,
+.wck-remove-upload:hover {
+	color:#e76054;
+    text-decoration: underline;
+}
+
+.mb-list-entry-fields {
+	list-style:none;
+}
+
+.mb-table-container tr:nth-child(2n+1) {
+    background-color:#FCFCFC;
+}
+
+.mb-table-container tr:last-child td {
+    border-bottom: 0 none;
+}
+
+.mb-table-container tr  td {
+    background: none repeat scroll 0 0 transparent;
+    border-bottom: 1px solid #EDEDED;
+    border-right: 1px solid #EDEDED;
+    padding: 8px;
+    position: relative;
+}
+
+.mb-table-container tr td:last-child {
+    border-right: 0 none;
+}
+
+.mb-table-container thead > tr > th {
+    border-right: 1px solid #E1E1E1;
+}
+
+.mb-table-container tr > th:last-child {
+    border-right: 0 none;
+}
+
+.cozmoslabs-button-group {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 35px;
+    margin-top: 35px;
+}
+
+body.post-type-wppb-epf-cpt #poststuff,
+body.post-type-wppb-rf-cpt #poststuff,
+body.post-type-wppb-ul-cpt #poststuff {
+    max-width: 900px;
+    margin: 0 auto;
+}
+
+@media screen and (min-width: 1402px) {
+    body.post-type-wppb-epf-cpt #poststuff,
+    body.post-type-wppb-rf-cpt #poststuff,
+    body.post-type-wppb-ul-cpt #poststuff {
+        max-width: 1200px;
+    }
+
+    body.post-type-wppb-epf-cpt #wpbody-content > .wrap,
+    body.post-type-wppb-rf-cpt #wpbody-content > .wrap,
+    body.post-type-wppb-ul-cpt #wpbody-content > .wrap {
+        max-width: 1200px;
+        margin: 0 auto;
+    }
+}
+
+@media screen and (min-width: 1920px) {
+    body.post-type-wppb-epf-cpt #poststuff,
+    body.post-type-wppb-rf-cpt #poststuff,
+    body.post-type-wppb-ul-cpt #poststuff {
+        max-width: 1500px;
+    }
+
+    body.post-type-wppb-epf-cpt #wpbody-content > .wrap,
+    body.post-type-wppb-rf-cpt #wpbody-content > .wrap,
+    body.post-type-wppb-ul-cpt #wpbody-content > .wrap {
+        max-width: 1500px;
+        margin: 0 auto;
+    }
+}
+
+#poststuff .postbox-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid #c3c4c7;
+}
+
+#poststuff .hndle {
+    font-weight: 600;
+    font-size: 11px !important;
+    line-height: 40px !important;
+    text-transform: uppercase;
+    color: #1E1E1E !important;
+    padding: 0 12px !important;
+    height: 40px;
+}
+
+
+/* Tables */
+.mb-table-container th {
+    font-weight: 600;
+    font-size: 14px;
+    line-height: 40px !important;
+    color: #1E1E1E !important;
+}
+
+.mb-table-container td {
+    font-style: normal;
+    font-weight: 400;
+    font-size: 13px;
+    line-height: 25px;
+    color: #1E1E1E !important;
+    vertical-align: middle;
+}
+
+.mb-table-container th.sortable a {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+
+/* MetaBoxes */
+#custom-redirects-info .inside,
+#wppb-rf-side .inside,
+#wppb-epf-side .inside,
+#manage-fields-info .inside,
+#wppb-sc-rf-side .inside,
+#wppb-sc-epf-side .inside,
+#pbpl-rf-side .inside,
+#pbpl-epf-side .inside {
+    padding: 24px 12px;
+}
+
+#wppb-sc-epf-side .cozmoslabs-form-field-wrapper:first-of-type,
+#wppb-sc-rf-side .cozmoslabs-form-field-wrapper:first-of-type,
+#pbpl-rf-side .cozmoslabs-form-field-wrapper:first-of-type,
+#pbpl-epf-side .cozmoslabs-form-field-wrapper:first-of-type {
+    margin-top: 0 !important;
+}
+
+#manage-fields-info .cozmoslabs-shortcodes-list {
+    font-weight: 400;
+    font-size: 13px;
+    line-height: 20px;
+    color: #757575;
+    padding-left: 20px;
+}
+
+#wppb-rf-side .cozmoslabs-description:not(.cozmoslabs-description-space-left, .cozmoslabs-description-align-right),
+#wppb-epf-side .cozmoslabs-description:not(.cozmoslabs-description-space-left, .cozmoslabs-description-align-right) {
+    flex-basis: 100%;
+}
+
+#wppb-rf-side textarea,
+#wppb-epf-side textarea {
+    height: 40px;
+    flex-basis: 100%;
+}
+
+#wppb-rf-side .cozmoslabs-form-field-wrapper,
+#wppb-epf-side .cozmoslabs-form-field-wrapper {
+    margin-top: 10px !important;
+}
+
+#mb-ajax-loading {
+    background: url(images/ajax-loader.gif) no-repeat;
+    width: 32px;
+    height: 32px;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+}
