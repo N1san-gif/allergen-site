@@ -1,12 +1,12 @@
 <?php
 /*
 Plugin Name: Allergen Profile Ultimate (Full Integration + Auth Tabs)
-Version: 24.0
-Description: Full version: individual profiles, text and card filtering, DB cleanup, custom registration with email verification, and tabbed login/register modal.
+Version: 29.0
+Description: Full version: English UI, Custom Smart Generics Dictionary, partial word highlighting (nut -> peanut), auto-open modal after save, Add All/Remove All buttons.
 */
 
 // =========================================================================
-// 1. HELPERS FOR FINDING ALLERGENS
+// 1. HELPERS FOR FINDING ALLERGENS & SMART DICTIONARY
 // =========================================================================
 
 function allergen_get_user_forbidden_words($user_id) {
@@ -24,16 +24,48 @@ function allergen_get_user_forbidden_words($user_id) {
     ", $saved_ids));
 
     $forbidden_words = [];
+
+    // 💡 СЛОВАРЬ ОБОБЩЕНИЙ ПОД ВАШУ БАЗУ
+    $smart_aliases = [
+        'cow milk'     => ['milk'],
+        'goat milk'    => ['milk'],
+        'chicken egg'  => ['egg'],
+        'soybean'      => ['soy'],
+        'milk protein' => ['milk'],
+        'wheat flour'  => ['wheat', 'flour'],
+        'mustard powder'=> ['mustard'],
+        'soy lecithin' => ['soy', 'lecithin']
+    ];
+
     foreach ($allergen_data as $row) {
-        $forbidden_words[] = mb_strtolower($row->allergen_name);
+        $name = mb_strtolower(trim($row->allergen_name));
+        $forbidden_words[] = $name;
+
+        // Проверяем главное название
+        if (isset($smart_aliases[$name])) {
+            foreach ($smart_aliases[$name] as $generic_word) {
+                $forbidden_words[] = $generic_word;
+            }
+        }
+
+        // Проверяем синонимы
         if ($row->aliases) {
             $aliases = explode(',', $row->aliases);
             foreach ($aliases as $alias) {
-                $forbidden_words[] = mb_strtolower(trim($alias));
+                $clean_alias = mb_strtolower(trim($alias));
+                $forbidden_words[] = $clean_alias;
+                
+                if (isset($smart_aliases[$clean_alias])) {
+                    foreach ($smart_aliases[$clean_alias] as $generic_word) {
+                        $forbidden_words[] = $generic_word;
+                    }
+                }
             }
         }
     }
-    return $forbidden_words;
+    
+    // Возвращаем уникальные слова (удаляем возможные дубликаты)
+    return array_unique($forbidden_words);
 }
 
 function allergen_find_in_text($text, $forbidden_words) {
@@ -59,8 +91,6 @@ function allergen_profile_cleanup_on_user_delete($user_id) {
 // =========================================================================
 // 3. CUSTOM REGISTRATION & EMAIL VERIFICATION
 // =========================================================================
-
-// Handle registration submission
 add_action('init', 'allergen_custom_process_registration');
 function allergen_custom_process_registration() {
     if (isset($_POST['allergen_custom_register']) && !is_user_logged_in()) {
@@ -81,17 +111,14 @@ function allergen_custom_process_registration() {
         $user_id = wp_create_user($username, $password, $email);
 
         if (!is_wp_error($user_id)) {
-            // Generate activation key
             $activation_key = wp_generate_password(20, false);
             update_user_meta($user_id, 'allergen_activation_key', $activation_key);
-            update_user_meta($user_id, 'allergen_is_activated', '0'); // 0 = not activated
+            update_user_meta($user_id, 'allergen_is_activated', '0');
 
-            // Generate activation link
             $activation_link = add_query_arg(['allergen_activate' => $activation_key, 'uid' => $user_id], home_url('/'));
 
-            // Send email
             $subject = 'Account Registration Confirmation';
-            $message = "Welcome, $username!\n\nTo complete your registration and get access to your allergen profile, please click on the following link:\n$activation_link\n\nIf you did not register on our site, please ignore this email.";
+            $message = "Welcome, $username!\n\nTo complete your registration and gain access to your individual allergen profile, please click on the following link:\n$activation_link\n\nIf you did not register on our site, please ignore this email.";
             
             wp_mail($email, $subject, $message);
 
@@ -102,7 +129,6 @@ function allergen_custom_process_registration() {
     }
 }
 
-// Intercept activation link click
 add_action('init', 'allergen_process_activation_link');
 function allergen_process_activation_link() {
     if (isset($_GET['allergen_activate']) && isset($_GET['uid'])) {
@@ -120,7 +146,6 @@ function allergen_process_activation_link() {
     }
 }
 
-// Block login if not activated
 add_filter('wp_authenticate_user', 'allergen_block_unverified_login', 10, 2);
 function allergen_block_unverified_login($user, $password) {
     if (is_a($user, 'WP_User')) {
@@ -158,7 +183,6 @@ function allergen_profile_final_integrated_render() {
     echo '<div id="allergen-modal-overlay"><div class="allergen-modal-window"><span id="close-allergen-modal">&times;</span>';
 
     if (!is_user_logged_in()) {
-        // --- TABBED LOGIN AND REGISTRATION FORM ---
         ?>
         <div style="text-align: center; padding: 10px 20px;">
             <h3 style="font-size: 24px; color: #d9534f; margin-bottom: 15px;">🔒 Authentication Required</h3>
@@ -199,7 +223,6 @@ function allergen_profile_final_integrated_render() {
         </div>
         <?php
     } else {
-        // --- ALLERGEN INTERFACE FOR LOGGED-IN USERS ---
         global $wpdb;
         $user_id = get_current_user_id();
         $saved_ids = $wpdb->get_col($wpdb->prepare("SELECT allergen_id FROM user_allergens_map WHERE user_id = %d", $user_id));
@@ -223,7 +246,7 @@ function allergen_profile_final_integrated_render() {
         </div>
         <div class="transfer-container">
             <div class="transfer-column">
-                <label class="col-label">Available Items (Double-click to add)</label>
+                <label class="col-label">Available Items (Click to select)</label>
                 <div id="available-items-box" class="structured-box">
                     <?php foreach ($all_allergens as $a) : 
                         $grp = $a->group_name ? $a->group_name : 'Other';
@@ -232,12 +255,17 @@ function allergen_profile_final_integrated_render() {
                     <?php endforeach; ?>
                 </div>
             </div>
+            
             <div class="transfer-controls">
-                <button type="button" id="btn-add-allg" class="move-btn">Add &raquo;</button>
-                <button type="button" id="btn-remove-allg" class="move-btn">&laquo; Remove</button>
+                <button type="button" id="btn-add-allg" class="move-btn" title="Add only selected items">Add Selected &raquo;</button>
+                <button type="button" id="btn-add-all-allg" class="move-btn" title="Add all visible items">Add All &raquo;</button>
+                <div style="height: 15px;"></div>
+                <button type="button" id="btn-remove-allg" class="move-btn" title="Remove only selected items">&laquo; Remove Selected</button>
+                <button type="button" id="btn-remove-all-allg" class="move-btn" title="Remove all items from your list">&laquo; Remove All</button>
             </div>
+            
             <div class="transfer-column">
-                <label class="col-label">My Restrictions (Grouped)</label>
+                <label class="col-label">My Restrictions</label>
                 <div id="structured-selected-display" class="structured-box"></div>
             </div>
         </div>
@@ -275,7 +303,6 @@ function allergen_profile_final_integrated_render() {
 #close-allergen-modal { position: absolute; top: 20px; right: 25px; font-size: 32px; cursor: pointer; color: #ccc; transition: 0.2s; }
 #close-allergen-modal:hover { color: #333; }
 
-/* Tabs CSS */
 .auth-tab-btn { padding: 12px 30px; border: 2px solid transparent; background: #f1f3f5; cursor: pointer; border-radius: 8px; font-weight: bold; font-size: 16px; color: #555; transition: all 0.2s ease; }
 .auth-tab-btn.active { background: #ff4d4d; color: white; border-color: #ff4d4d; box-shadow: 0 4px 10px rgba(255, 77, 77, 0.3); }
 .auth-tab-btn:hover:not(.active) { background: #e9ecef; }
@@ -287,17 +314,17 @@ function allergen_profile_final_integrated_render() {
 .transfer-container { display: flex; gap: 20px; align-items: stretch; }
 .transfer-column { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .col-label { font-size: 14px; font-weight: 700; margin-bottom: 12px; display: block; color: #333; }
-.structured-box { width: 100%; height: 350px; border: 1px solid #ced4da; border-radius: 8px; padding: 15px; background: #fff; overflow-y: auto; line-height: 1.8; }
+.structured-box { width: 100%; height: 380px; border: 1px solid #ced4da; border-radius: 8px; padding: 15px; background: #fff; overflow-y: auto; line-height: 1.8; }
 .list-item-full { display: block; width: 100%; padding: 8px 12px; background: #f8f9fa; border: 1px solid #eee; margin-bottom: 4px; border-radius: 4px; cursor: pointer; font-size: 13px; transition: 0.2s; }
 .list-item-full:hover { background: #e9ecef; }
 .list-item-full.selected-for-add { background: #007bff !important; color: white; border-color: #007bff; }
 .group-row { margin-bottom: 15px; padding-bottom: 5px; border-bottom: 1px solid #f0f0f0; }
 .group-title { font-weight: bold; color: #2c3e50; font-size: 13px; }
-.tag-item { background: #f1f3f5; border: 1px solid #ddd; padding: 3px 8px; border-radius: 4px; margin: 2px; font-size: 13px; cursor: pointer; display: inline-block; transition: 0.2s; }
+.tag-item { background: #f1f3f5; border: 1px solid #ddd; padding: 4px 10px; border-radius: 4px; margin: 3px; font-size: 13px; cursor: pointer; display: inline-block; transition: 0.2s; }
 .tag-item:hover { background: #ffeded; border-color: #ff4d4d; color: #ff4d4d; }
 .tag-item.tag-selected { background: #ff4d4d; color: white; border-color: #ff4d4d; }
-.transfer-controls { display: flex; flex-direction: column; justify-content: center; gap: 15px; padding-top: 30px; flex-shrink: 0; }
-.move-btn { width: 120px; padding: 12px 15px; cursor: pointer; font-weight: bold; border-radius: 8px; border: 1px solid #ddd; background: #f8f9fa; transition: 0.2s; text-align: center; }
+.transfer-controls { display: flex; flex-direction: column; justify-content: center; gap: 10px; padding-top: 30px; flex-shrink: 0; }
+.move-btn { width: 140px; padding: 10px 10px; cursor: pointer; font-weight: bold; font-size: 13px; border-radius: 6px; border: 1px solid #ddd; background: #f8f9fa; transition: 0.2s; text-align: center; }
 .move-btn:hover { background: #007bff; color: white; border-color: #007bff; }
 .save-btn { width: 100%; margin-top: 25px; padding: 18px; background: #007bff; color: white; border: none; border-radius: 10px; font-size: 16px; font-weight: bold; cursor: pointer; transition: 0.2s; }
 .save-btn:hover { background: #0056b3; transform: translateY(-2px); }
@@ -312,7 +339,6 @@ input:checked + .slider:before { transform: translateX(26px); }
 </style>
 
 <script>
-// Logic for switching tabs (Login / Register)
 function switchAuthTab(tabName) {
     if (tabName === 'login') {
         document.getElementById('form-login').style.display = 'block';
@@ -330,6 +356,15 @@ function switchAuthTab(tabName) {
 document.addEventListener("DOMContentLoaded", function() {
     const modal = document.getElementById("allergen-modal-overlay");
     const closeM = () => { modal.style.display = "none"; };
+    
+    // МАГИЯ АВТО-ОТКРЫТИЯ ПОСЛЕ СОХРАНЕНИЯ:
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('allergen_updated') === '1') {
+        modal.style.display = "block"; // Открываем окно
+        // Очищаем ссылку от метки, чтобы при обновлении F5 окно не открывалось
+        const newUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
+        window.history.replaceState({}, document.title, newUrl);
+    }
     
     document.getElementById("allergen-trigger-icon").onclick = () => { modal.style.display = "block"; };
     document.getElementById("close-allergen-modal").onclick = closeM;
@@ -394,12 +429,31 @@ document.addEventListener("DOMContentLoaded", function() {
             renderStructured();
         };
 
+        document.getElementById("btn-add-all-allg").onclick = () => {
+            availBox.querySelectorAll('.list-item-full').forEach(el => {
+                if (el.style.display !== "none") {
+                    const id = parseInt(el.dataset.id);
+                    if(!selectedData.find(x => x.id === id)) {
+                        selectedData.push({id, name: el.dataset.name, group: el.dataset.group});
+                        el.style.display = "none"; el.classList.remove('selected-for-add');
+                    }
+                }
+            });
+            renderStructured();
+        };
+
         const removeItem = (id) => {
             selectedData = selectedData.filter(x => x.id !== id); itemsToRemove.delete(id);
             const el = availBox.querySelector(`.list-item-full[data-id="${id}"]`);
             if(el) { el.style.display = "block"; filterFn(); } renderStructured();
         };
+
         document.getElementById("btn-remove-allg").onclick = () => { itemsToRemove.forEach(id => removeItem(id)); };
+
+        document.getElementById("btn-remove-all-allg").onclick = () => {
+            const allIds = selectedData.map(x => x.id);
+            allIds.forEach(id => removeItem(id));
+        };
 
         const filterFn = () => {
             const q = document.getElementById("allergen-search").value.toLowerCase();
@@ -441,7 +495,12 @@ add_action('init', function() {
                 $wpdb->insert('user_allergens_map', ['user_id' => $user_id, 'allergen_id' => intval($id)]);
             }
         }
-        wp_safe_redirect(wp_get_referer() ? wp_get_referer() : home_url());
+        
+        // МАГИЯ СОХРАНЕНИЯ: Добавляем метку в URL перед перезагрузкой
+        $redirect_url = wp_get_referer() ? wp_get_referer() : home_url();
+        $redirect_url = add_query_arg('allergen_updated', '1', $redirect_url);
+        
+        wp_safe_redirect($redirect_url);
         exit;
     }
 });
@@ -461,6 +520,7 @@ function allergen_register_recipe_post_type() {
 add_filter('the_content', 'allergen_engine_filter_recipes');
 function allergen_engine_filter_recipes($content) {
     if (!is_singular('recipe') || !is_user_logged_in()) return $content;
+    
     $user_id = get_current_user_id();
     $forbidden_words = allergen_get_user_forbidden_words($user_id);
     $found_allergen = allergen_find_in_text($content, $forbidden_words);
@@ -469,19 +529,39 @@ function allergen_engine_filter_recipes($content) {
         $is_strict = get_user_meta($user_id, 'allergen_setting_strict', true) === '1';
         $is_highlight = get_user_meta($user_id, 'allergen_setting_highlight', true) === '1';
 
+        // 1. СОРТИРОВКА: от самых длинных слов и фраз к самым коротким
+        usort($forbidden_words, function($a, $b) {
+            return mb_strlen($b) - mb_strlen($a);
+        });
+
+        // 2. УЛУЧШЕННАЯ ПОКРАСКА (поиск по части слова с захватом всего слова)
+        foreach ($forbidden_words as $word) {
+            if (mb_strlen($word) > 2) {
+                // \p{L}* позволяет захватывать любые буквы ДО и ПОСЛЕ корня слова.
+                $pattern = '/(\p{L}*' . preg_quote($word, '/') . '\p{L}*)(?![^<]*>)/iu';
+                $replacement = '<span style="color: #ff4d4d; font-weight: bold; text-decoration: underline;">$1</span>';
+                $content = preg_replace($pattern, $replacement, $content);
+            }
+        }
+
+        // 3. ВЫВОД БЛОКОВ (на английском)
         if ($is_strict) {
             return '<div class="allergen-server-block" style="border: 2px solid #ff4d4d; border-radius: 10px; padding: 30px; text-align: center; background: #fff0f0; margin: 20px 0;">
                 <h3 style="color: #d9534f; margin-top: 0;">⚠️ Warning! Recipe Blocked</h3>
-                <p>This dish contains: <strong style="text-transform: uppercase;">' . esc_html($found_allergen) . '</strong></p>
+                <p>This dish contains: <strong style="text-transform: uppercase; color: #ff4d4d;">' . esc_html($found_allergen) . '</strong></p>
                 <button onclick="document.getElementById(\'hidden-recipe-content\').style.display=\'block\'; this.style.display=\'none\';" style="background: #d9534f; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; margin-top: 10px;">Show anyway</button>
             </div><div id="hidden-recipe-content" style="display: none;">' . $content . '</div>';
-        } elseif ($is_highlight) {
+        } 
+        elseif ($is_highlight) {
             return '<div style="border: 4px solid #ff4d4d; padding: 25px 20px 20px; position: relative; background: #fffafa; border-radius: 8px; margin-top: 25px;">
                 <div style="background: #ff4d4d; color: white; padding: 5px 15px; font-weight: bold; position: absolute; top: -15px; left: 20px; border-radius: 5px; font-size: 14px;">
                     ⚠️ DANGEROUS: CONTAINS ' . strtoupper(esc_html($found_allergen)) . '
                 </div><div>' . $content . '</div></div>';
         }
+        
+        return $content;
     }
+    
     return $content;
 }
 
