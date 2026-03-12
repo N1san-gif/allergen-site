@@ -456,12 +456,29 @@ document.addEventListener("DOMContentLoaded", function() {
         };
 
         const filterFn = () => {
-            const q = document.getElementById("allergen-search").value.toLowerCase();
+            // Получаем то, что ввел пользователь
+            let rawQuery = document.getElementById("allergen-search").value.toLowerCase().trim();
+            
+            // Умная обрезка множественного числа для поиска (отбрасываем 's' или 'es' на конце)
+            let q = rawQuery;
+            if (q.endsWith('es') && q.length > 3) {
+                q = q.slice(0, -2);
+            } else if (q.endsWith('s') && q.length > 2) {
+                q = q.slice(0, -1);
+            }
+
             const cat = document.getElementById("group-filter").value;
+            
             availBox.querySelectorAll('.list-item-full').forEach(el => {
                 if (selectedData.find(x => x.id === parseInt(el.dataset.id))) { el.style.display = "none"; return; }
-                const mS = el.innerText.toLowerCase().includes(q) || (el.dataset.aliases || "").toLowerCase().includes(q);
+                
+                // Ищем совпадения и по полному слову (eggs), и по обрезанному корню (egg)
+                const text = el.innerText.toLowerCase();
+                const aliases = (el.dataset.aliases || "").toLowerCase();
+                
+                const mS = text.includes(rawQuery) || text.includes(q) || aliases.includes(rawQuery) || aliases.includes(q);
                 const mC = (cat === 'all' || el.dataset.group === cat);
+                
                 el.style.display = (mS && mC) ? "block" : "none";
             });
         };
