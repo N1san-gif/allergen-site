@@ -5,7 +5,6 @@ Version: 29.0
 Description: Full version: English UI, Custom Smart Generics Dictionary, partial word highlighting (nut -> peanut), auto-open modal after save, Add All/Remove All buttons.
 */
 
-
 function allergen_get_user_forbidden_words($user_id) {
     global $wpdb;
     $saved_ids = $wpdb->get_col($wpdb->prepare("SELECT allergen_id FROM user_allergens_map WHERE user_id = %d", $user_id));
@@ -563,18 +562,37 @@ function allergen_recipe_grid_shortcode() {
     if ($query->have_posts()) {
         while ($query->have_posts()) {
             $query->the_post(); global $post;
-            $text_to_check = get_the_title() . ' ' . $post->post_content;
+            
+            $card_title = get_the_title();
+            $card_excerpt = wp_trim_words(get_the_excerpt(), 10);
+            $text_to_check = $card_title . ' ' . $post->post_content;
+            
             $found_allergen = allergen_find_in_text($text_to_check, $forbidden_words);
 
             if ($found_allergen && $is_strict) continue;
 
-            $img = get_the_post_thumbnail_url(get_the_ID(), 'medium') ?: 'https://via.placeholder.com/300x200?text=No+Image';
-            $card_class = "recipe-card-block" . ($found_allergen && $is_highlight ? " recipe-card-danger" : "");
-            $badge_html = ($found_allergen && $is_highlight) ? '<div class="allergen-card-badge">⚠️ CONTAINS ' . strtoupper(esc_html($found_allergen)) . '</div>' : "";
+            $img = get_the_post_thumbnail_url(get_the_ID(), 'medium');
+            $img_style = $img ? 'background-image: url(' . esc_url($img) . ');' : 'background: #f0f0f0; display:flex; align-items:center; justify-content:center; color:#999;';
+            $img_div = $img ? '<div class="recipe-card-image" style="' . $img_style . '"></div>' : '<div class="recipe-card-image" style="' . $img_style . '"><span>No Image</span></div>';
 
-            $output .= '<div class="' . $card_class . '">' . $badge_html . '
-                <div class="recipe-card-image" style="background-image: url(' . esc_url($img) . ');"></div>
-                <div class="recipe-card-content"><h4>' . get_the_title() . '</h4><p>' . wp_trim_words(get_the_excerpt(), 10) . '</p>
+            // МАГІЯ ТУТ: ЗАВЖДИ підсвічуємо слова в тексті картки, якщо алерген є у профілі користувача (незалежно від повзунків!)
+            if ($found_allergen) {
+                foreach ($forbidden_words as $word) {
+                    if (mb_strlen($word) > 2) {
+                        $pattern = '/(?<!\p{L})(' . preg_quote($word, '/') . '\p{L}*)(?![^<]*>)/iu';
+                        $replacement = '<span style="color: #ff4d4d; font-weight: bold; text-decoration: underline;">$1</span>';
+                        $card_title = preg_replace($pattern, $replacement, $card_title);
+                        $card_excerpt = preg_replace($pattern, $replacement, $card_excerpt);
+                    }
+                }
+            }
+
+            // А ось червону рамку і бірку показуємо ТІЛЬКИ якщо користувач увімкнув повзунок Highlight
+            $card_class = "recipe-card-block" . ($found_allergen && $is_highlight ? " recipe-card-danger" : "");
+            $badge_html = ($found_allergen && $is_highlight) ? '<div class="allergen-card-badge">⚠️ CONTAINS ' . mb_strtoupper(esc_html($found_allergen), 'UTF-8') . '</div>' : "";
+
+            $output .= '<div class="' . $card_class . '">' . $badge_html . $img_div . '
+                <div class="recipe-card-content"><h4>' . $card_title . '</h4><p>' . $card_excerpt . '</p>
                 <a href="' . get_permalink() . '" class="recipe-card-btn">View Recipe</a></div></div>';
         }
         wp_reset_postdata();
@@ -583,15 +601,15 @@ function allergen_recipe_grid_shortcode() {
     }
     $output .= '</div><style>
     .recipe-grid-container { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 25px; padding: 20px 0; }
-    .recipe-card-block { background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.1); transition: transform 0.3s ease; border: 1px solid #eee; position: relative; }
+    .recipe-card-block { background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.1); transition: transform 0.3s ease; border: 1px solid #eee; position: relative; display: flex; flex-direction: column;}
     .recipe-card-block:hover { transform: translateY(-5px); }
     .recipe-card-danger { border: 3px solid #ff4d4d; }
     .allergen-card-badge { position: absolute; top: 10px; left: 10px; background: #ff4d4d; color: white; padding: 5px 10px; font-size: 12px; font-weight: bold; border-radius: 6px; z-index: 2; box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
-    .recipe-card-image { height: 180px; background-size: cover; background-position: center; }
-    .recipe-card-content { padding: 15px; }
-    .recipe-card-content h4 { margin: 0 0 10px 0; font-size: 18px; color: #333; }
-    .recipe-card-content p { font-size: 14px; color: #666; margin-bottom: 15px; }
-    .recipe-card-btn { display: inline-block; padding: 8px 15px; background: #ff4d4d; color: white !important; text-decoration: none !important; border-radius: 5px; font-weight: bold; font-size: 14px; }
+    .recipe-card-image { height: 180px; background-size: cover; background-position: center; border-bottom: 1px solid #eee; }
+    .recipe-card-content { padding: 20px; flex-grow: 1; display: flex; flex-direction: column; }
+    .recipe-card-content h4 { margin: 0 0 10px 0; font-size: 18px; color: #333; line-height: 1.4; }
+    .recipe-card-content p { font-size: 14px; color: #666; margin-bottom: 20px; flex-grow: 1; }
+    .recipe-card-btn { display: inline-block; padding: 10px 15px; background: #ff4d4d; color: white !important; text-decoration: none !important; border-radius: 5px; font-weight: bold; font-size: 14px; text-align: center; }
     .recipe-card-btn:hover { background: #d94343; }
     </style>';
     return $output;
