@@ -1,13 +1,10 @@
 <?php
 /*
-Plugin Name: Allergen Profile Ultimate (Full Integration + Auth Tabs)
+Plugin Name: Allergen Profile Ultimate
 Version: 29.0
 Description: Full version: English UI, Custom Smart Generics Dictionary, partial word highlighting (nut -> peanut), auto-open modal after save, Add All/Remove All buttons.
 */
 
-// =========================================================================
-// 1. HELPERS FOR FINDING ALLERGENS & SMART DICTIONARY
-// =========================================================================
 
 function allergen_get_user_forbidden_words($user_id) {
     global $wpdb;
@@ -25,7 +22,6 @@ function allergen_get_user_forbidden_words($user_id) {
 
     $forbidden_words = [];
 
-    // 💡 СЛОВАРЬ ОБОБЩЕНИЙ ПОД ВАШУ БАЗУ
     $smart_aliases = [
         'cow milk'     => ['milk'],
         'goat milk'    => ['milk'],
@@ -41,14 +37,12 @@ function allergen_get_user_forbidden_words($user_id) {
         $name = mb_strtolower(trim($row->allergen_name));
         $forbidden_words[] = $name;
 
-        // Проверяем главное название
         if (isset($smart_aliases[$name])) {
             foreach ($smart_aliases[$name] as $generic_word) {
                 $forbidden_words[] = $generic_word;
             }
         }
 
-        // Проверяем синонимы
         if ($row->aliases) {
             $aliases = explode(',', $row->aliases);
             foreach ($aliases as $alias) {
@@ -64,7 +58,6 @@ function allergen_get_user_forbidden_words($user_id) {
         }
     }
     
-    // Возвращаем уникальные слова (удаляем возможные дубликаты)
     return array_unique($forbidden_words);
 }
 
@@ -79,18 +72,12 @@ function allergen_find_in_text($text, $forbidden_words) {
     return null;
 }
 
-// =========================================================================
-// 2. DATABASE CLEANUP ON USER DELETION
-// =========================================================================
 add_action('delete_user', 'allergen_profile_cleanup_on_user_delete');
 function allergen_profile_cleanup_on_user_delete($user_id) {
     global $wpdb;
     $wpdb->delete('user_allergens_map', array('user_id' => $user_id), array('%d'));
 }
 
-// =========================================================================
-// 3. CUSTOM REGISTRATION & EMAIL VERIFICATION
-// =========================================================================
 add_action('init', 'allergen_custom_process_registration');
 function allergen_custom_process_registration() {
     if (isset($_POST['allergen_custom_register']) && !is_user_logged_in()) {
@@ -157,9 +144,6 @@ function allergen_block_unverified_login($user, $password) {
     return $user;
 }
 
-// =========================================================================
-// 4. DATA TRANSFER & INTERFACE RENDERING
-// =========================================================================
 add_action('wp_head', function() {
     if (is_user_logged_in()) {
         global $wpdb;
@@ -357,11 +341,9 @@ document.addEventListener("DOMContentLoaded", function() {
     const modal = document.getElementById("allergen-modal-overlay");
     const closeM = () => { modal.style.display = "none"; };
     
-    // МАГИЯ АВТО-ОТКРЫТИЯ ПОСЛЕ СОХРАНЕНИЯ:
     const urlParams = new URLSearchParams(window.location.search);
     if (urlParams.get('allergen_updated') === '1') {
-        modal.style.display = "block"; // Открываем окно
-        // Очищаем ссылку от метки, чтобы при обновлении F5 окно не открывалось
+        modal.style.display = "block";
         const newUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
         window.history.replaceState({}, document.title, newUrl);
     }
@@ -456,10 +438,8 @@ document.addEventListener("DOMContentLoaded", function() {
         };
 
         const filterFn = () => {
-            // Получаем то, что ввел пользователь
             let rawQuery = document.getElementById("allergen-search").value.toLowerCase().trim();
             
-            // Умная обрезка множественного числа для поиска (отбрасываем 's' или 'es' на конце)
             let q = rawQuery;
             if (q.endsWith('es') && q.length > 3) {
                 q = q.slice(0, -2);
@@ -472,7 +452,6 @@ document.addEventListener("DOMContentLoaded", function() {
             availBox.querySelectorAll('.list-item-full').forEach(el => {
                 if (selectedData.find(x => x.id === parseInt(el.dataset.id))) { el.style.display = "none"; return; }
                 
-                // Ищем совпадения и по полному слову (eggs), и по обрезанному корню (egg)
                 const text = el.innerText.toLowerCase();
                 const aliases = (el.dataset.aliases || "").toLowerCase();
                 
@@ -493,9 +472,6 @@ document.addEventListener("DOMContentLoaded", function() {
 <?php
 }
 
-// =========================================================================
-// 5. SAVING ALLERGEN DATA
-// =========================================================================
 add_action('init', function() {
     if (isset($_POST['save_db_allergens']) && is_user_logged_in()) {
         global $wpdb;
@@ -512,8 +488,7 @@ add_action('init', function() {
                 $wpdb->insert('user_allergens_map', ['user_id' => $user_id, 'allergen_id' => intval($id)]);
             }
         }
-        
-        // МАГИЯ СОХРАНЕНИЯ: Добавляем метку в URL перед перезагрузкой
+
         $redirect_url = wp_get_referer() ? wp_get_referer() : home_url();
         $redirect_url = add_query_arg('allergen_updated', '1', $redirect_url);
         
@@ -522,9 +497,6 @@ add_action('init', function() {
     }
 });
 
-// =========================================================================
-// 6. RECIPE FILTERING & SHORTCODE
-// =========================================================================
 add_action('init', 'allergen_register_recipe_post_type');
 function allergen_register_recipe_post_type() {
     register_post_type('recipe', array(
@@ -546,22 +518,18 @@ function allergen_engine_filter_recipes($content) {
         $is_strict = get_user_meta($user_id, 'allergen_setting_strict', true) === '1';
         $is_highlight = get_user_meta($user_id, 'allergen_setting_highlight', true) === '1';
 
-        // 1. СОРТИРОВКА: от самых длинных слов и фраз к самым коротким
         usort($forbidden_words, function($a, $b) {
             return mb_strlen($b) - mb_strlen($a);
         });
 
-        // 2. УЛУЧШЕННАЯ ПОКРАСКА (поиск по части слова с захватом всего слова)
         foreach ($forbidden_words as $word) {
             if (mb_strlen($word) > 2) {
-                // \p{L}* позволяет захватывать любые буквы ДО и ПОСЛЕ корня слова.
+
                 $pattern = '/(\p{L}*' . preg_quote($word, '/') . '\p{L}*)(?![^<]*>)/iu';
                 $replacement = '<span style="color: #ff4d4d; font-weight: bold; text-decoration: underline;">$1</span>';
                 $content = preg_replace($pattern, $replacement, $content);
             }
         }
-
-        // 3. ВЫВОД БЛОКОВ (на английском)
         if ($is_strict) {
             return '<div class="allergen-server-block" style="border: 2px solid #ff4d4d; border-radius: 10px; padding: 30px; text-align: center; background: #fff0f0; margin: 20px 0;">
                 <h3 style="color: #d9534f; margin-top: 0;">⚠️ Warning! Recipe Blocked</h3>
