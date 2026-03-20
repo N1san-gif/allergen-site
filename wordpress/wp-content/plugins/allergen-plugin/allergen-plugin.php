@@ -1,10 +1,13 @@
 <?php
 /*
 Plugin Name: Allergen Profile Ultimate
-Version: 29.0
-Description: Full version: English UI, Custom Smart Generics Dictionary, partial word highlighting (nut -> peanut), auto-open modal after save, Add All/Remove All buttons.
+Version: 30.0
+Description: Full version: 100% English UI, Smart Generics, Auto-open modal, Synonym Check & Auto-fix, Database Auto-import from Open Food Facts.
 */
 
+// ==========================================
+// 1. DATA GATHERING & SMART DICTIONARY
+// ==========================================
 function allergen_get_user_forbidden_words($user_id) {
     global $wpdb;
     $saved_ids = $wpdb->get_col($wpdb->prepare("SELECT allergen_id FROM user_allergens_map WHERE user_id = %d", $user_id));
@@ -56,7 +59,6 @@ function allergen_get_user_forbidden_words($user_id) {
             }
         }
     }
-    
     return array_unique($forbidden_words);
 }
 
@@ -77,6 +79,9 @@ function allergen_profile_cleanup_on_user_delete($user_id) {
     $wpdb->delete('user_allergens_map', array('user_id' => $user_id), array('%d'));
 }
 
+// ==========================================
+// 2. REGISTRATION & ACTIVATION FLOW
+// ==========================================
 add_action('init', 'allergen_custom_process_registration');
 function allergen_custom_process_registration() {
     if (isset($_POST['allergen_custom_register']) && !is_user_logged_in()) {
@@ -143,6 +148,9 @@ function allergen_block_unverified_login($user, $password) {
     return $user;
 }
 
+// ==========================================
+// 3. FRONTEND MODAL & JS LOGIC
+// ==========================================
 add_action('wp_head', function() {
     if (is_user_logged_in()) {
         global $wpdb;
@@ -426,10 +434,13 @@ document.addEventListener("DOMContentLoaded", function() {
         const removeItem = (id) => {
             selectedData = selectedData.filter(x => x.id !== id); itemsToRemove.delete(id);
             const el = availBox.querySelector(`.list-item-full[data-id="${id}"]`);
-            if(el) { el.style.display = "block"; filterFn(); } renderStructured();
+            if(el) { el.style.display = "block"; filterFn(); }
+            renderStructured();
         };
 
-        document.getElementById("btn-remove-allg").onclick = () => { itemsToRemove.forEach(id => removeItem(id)); };
+        document.getElementById("btn-remove-allg").onclick = () => {
+            itemsToRemove.forEach(id => removeItem(id));
+        };
 
         document.getElementById("btn-remove-all-allg").onclick = () => {
             const allIds = selectedData.map(x => x.id);
@@ -438,7 +449,6 @@ document.addEventListener("DOMContentLoaded", function() {
 
         const filterFn = () => {
             let rawQuery = document.getElementById("allergen-search").value.toLowerCase().trim();
-            
             let q = rawQuery;
             if (q.endsWith('es') && q.length > 3) {
                 q = q.slice(0, -2);
@@ -447,19 +457,20 @@ document.addEventListener("DOMContentLoaded", function() {
             }
 
             const cat = document.getElementById("group-filter").value;
-            
+
             availBox.querySelectorAll('.list-item-full').forEach(el => {
-                if (selectedData.find(x => x.id === parseInt(el.dataset.id))) { el.style.display = "none"; return; }
-                
+                if (selectedData.find(x => x.id === parseInt(el.dataset.id))) {
+                    el.style.display = "none";
+                    return;
+                }
                 const text = el.innerText.toLowerCase();
                 const aliases = (el.dataset.aliases || "").toLowerCase();
-                
                 const mS = text.includes(rawQuery) || text.includes(q) || aliases.includes(rawQuery) || aliases.includes(q);
                 const mC = (cat === 'all' || el.dataset.group === cat);
-                
                 el.style.display = (mS && mC) ? "block" : "none";
             });
         };
+
         document.getElementById("allergen-search").oninput = filterFn;
         document.getElementById("group-filter").onchange = filterFn;
 
@@ -467,7 +478,6 @@ document.addEventListener("DOMContentLoaded", function() {
     }
 });
 </script>
-
 <?php
 }
 
@@ -475,40 +485,45 @@ add_action('init', function() {
     if (isset($_POST['save_db_allergens']) && is_user_logged_in()) {
         global $wpdb;
         $user_id = get_current_user_id();
+        
         $highlight = isset($_POST['prot_highlight']) ? '1' : '0';
         $strict = isset($_POST['prot_strict']) ? '1' : '0';
         
         update_user_meta($user_id, 'allergen_setting_highlight', $highlight);
         update_user_meta($user_id, 'allergen_setting_strict', $strict);
+
         $wpdb->delete('user_allergens_map', ['user_id' => $user_id]);
-        
+
         if (!empty($_POST['allergen_ids'])) {
             foreach ($_POST['allergen_ids'] as $id) {
                 $wpdb->insert('user_allergens_map', ['user_id' => $user_id, 'allergen_id' => intval($id)]);
             }
         }
-
         $redirect_url = wp_get_referer() ? wp_get_referer() : home_url();
         $redirect_url = add_query_arg('allergen_updated', '1', $redirect_url);
-        
         wp_safe_redirect($redirect_url);
         exit;
     }
 });
 
+// ==========================================
+// 4. RECIPE POST TYPE & CONTENT FILTER
+// ==========================================
 add_action('init', 'allergen_register_recipe_post_type');
 function allergen_register_recipe_post_type() {
     register_post_type('recipe', array(
-        'labels' => array('name' => 'Recipes', 'singular_name' => 'Recipe'),
-        'public' => true, 'has_archive' => true, 'menu_icon' => 'dashicons-carrot',
-        'supports' => array('title', 'editor', 'thumbnail', 'excerpt'),
+        'labels'      => array('name' => 'Recipes', 'singular_name' => 'Recipe'),
+        'public'      => true,
+        'has_archive' => true,
+        'menu_icon'   => 'dashicons-carrot',
+        'supports'    => array('title', 'editor', 'thumbnail', 'excerpt'),
     ));
 }
 
 add_filter('the_content', 'allergen_engine_filter_recipes');
 function allergen_engine_filter_recipes($content) {
     if (!is_singular('recipe') || !is_user_logged_in()) return $content;
-    
+
     $user_id = get_current_user_id();
     $forbidden_words = allergen_get_user_forbidden_words($user_id);
     $found_allergen = allergen_find_in_text($content, $forbidden_words);
@@ -523,94 +538,342 @@ function allergen_engine_filter_recipes($content) {
 
         foreach ($forbidden_words as $word) {
             if (mb_strlen($word) > 2) {
-
                 $pattern = '/(\p{L}*' . preg_quote($word, '/') . '\p{L}*)(?![^<]*>)/iu';
                 $replacement = '<span style="color: #ff4d4d; font-weight: bold; text-decoration: underline;">$1</span>';
                 $content = preg_replace($pattern, $replacement, $content);
             }
         }
+
         if ($is_strict) {
             return '<div class="allergen-server-block" style="border: 2px solid #ff4d4d; border-radius: 10px; padding: 30px; text-align: center; background: #fff0f0; margin: 20px 0;">
-                <h3 style="color: #d9534f; margin-top: 0;">⚠️ Warning! Recipe Blocked</h3>
-                <p>This dish contains: <strong style="text-transform: uppercase; color: #ff4d4d;">' . esc_html($found_allergen) . '</strong></p>
-                <button onclick="document.getElementById(\'hidden-recipe-content\').style.display=\'block\'; this.style.display=\'none\';" style="background: #d9534f; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; margin-top: 10px;">Show anyway</button>
-            </div><div id="hidden-recipe-content" style="display: none;">' . $content . '</div>';
-        } 
-        elseif ($is_highlight) {
-            return '<div style="border: 4px solid #ff4d4d; padding: 25px 20px 20px; position: relative; background: #fffafa; border-radius: 8px; margin-top: 25px;">
-                <div style="background: #ff4d4d; color: white; padding: 5px 15px; font-weight: bold; position: absolute; top: -15px; left: 20px; border-radius: 5px; font-size: 14px;">
-                    ⚠️ DANGEROUS: CONTAINS ' . strtoupper(esc_html($found_allergen)) . '
-                </div><div>' . $content . '</div></div>';
+                        <h3 style="color: #ff4d4d; margin-top: 0; font-size: 24px;">⚠️ STRICT MODE ACTIVE</h3>
+                        <p style="font-size: 16px; color: #333;">This recipe contains ingredients that are unsafe for your profile: <b>' . esc_html(ucfirst($found_allergen)) . '</b></p>
+                    </div>';
         }
-        
-        return $content;
+
+        if ($is_highlight) {
+            $warning_banner = '<div style="background: #fff0f0; color: #d9534f; padding: 15px; border-left: 5px solid #d9534f; margin-bottom: 20px; font-weight: bold; border-radius: 5px;">
+                                   ⚠️ WARNING: Contains allergens (e.g. ' . esc_html(ucfirst($found_allergen)) . ')
+                               </div>';
+            return $warning_banner . $content;
+        }
     }
-    
+
     return $content;
 }
 
-add_shortcode('recipe_grid', 'allergen_recipe_grid_shortcode');
-function allergen_recipe_grid_shortcode() {
-    $user_id = is_user_logged_in() ? get_current_user_id() : 0;
-    $forbidden_words = $user_id ? allergen_get_user_forbidden_words($user_id) : [];
-    $is_strict = $user_id ? get_user_meta($user_id, 'allergen_setting_strict', true) === '1' : false;
-    $is_highlight = $user_id ? get_user_meta($user_id, 'allergen_setting_highlight', true) === '1' : false;
+// ==========================================
+// 5. ADMIN MENU & PAGES
+// ==========================================
+add_action('admin_menu', 'allergen_admin_menu_pro');
+function allergen_admin_menu_pro() {
+    add_menu_page('Allergens', 'Allergens', 'manage_options', 'allergen-main', 'render_allergen_page_pro', 'dashicons-shield-alt', 6);
+    add_submenu_page('allergen-main', 'Groups', 'Allergen Groups', 'manage_options', 'allergen-groups', 'render_groups_page_pro');
+}
 
-    $query = new WP_Query(array('post_type' => 'recipe', 'posts_per_page' => 12, 'orderby' => 'date', 'order' => 'DESC'));
-    $output = '<div class="recipe-grid-container">';
+function render_allergen_page_pro() {
+    global $wpdb;
+    $tab = isset($_GET['tab']) ? $_GET['tab'] : 'list';
+    $table = 'allergens';
+    $alias_table = 'allergen_aliases'; 
 
-    if ($query->have_posts()) {
-        while ($query->have_posts()) {
-            $query->the_post(); global $post;
-            
-            $card_title = get_the_title();
-            $card_excerpt = wp_trim_words(get_the_excerpt(), 10);
-            $text_to_check = $card_title . ' ' . $post->post_content;
-            
-            $found_allergen = allergen_find_in_text($text_to_check, $forbidden_words);
+    if (isset($_GET['del'])) {
+        $wpdb->delete($table, ['allergen_id' => intval($_GET['del'])]);
+        $wpdb->delete($alias_table, ['allergen_id' => intval($_GET['del'])]); 
+        echo '<div class="updated"><p>Successfully deleted!</p></div>';
+    }
 
-            if ($found_allergen && $is_strict) continue;
+    if (isset($_POST['save_allergen'])) {
+        $allergen_data = [
+            'allergen_name' => sanitize_text_field($_POST['name']),
+            'group_id' => intval($_POST['group_id'])
+        ];
 
-            $img = get_the_post_thumbnail_url(get_the_ID(), 'medium');
-            $img_style = $img ? 'background-image: url(' . esc_url($img) . ');' : 'background: #f0f0f0; display:flex; align-items:center; justify-content:center; color:#999;';
-            $img_div = $img ? '<div class="recipe-card-image" style="' . $img_style . '"></div>' : '<div class="recipe-card-image" style="' . $img_style . '"><span>No Image</span></div>';
+        if (!empty($_POST['id'])) {
+            $allergen_id = intval($_POST['id']);
+            $wpdb->update($table, $allergen_data, ['allergen_id' => $allergen_id]);
+        } else {
+            $wpdb->insert($table, $allergen_data);
+            $allergen_id = $wpdb->insert_id;
+        }
 
-            // МАГІЯ ТУТ: ЗАВЖДИ підсвічуємо слова в тексті картки, якщо алерген є у профілі користувача (незалежно від повзунків!)
-            if ($found_allergen) {
-                foreach ($forbidden_words as $word) {
-                    if (mb_strlen($word) > 2) {
-                        $pattern = '/(?<!\p{L})(' . preg_quote($word, '/') . '\p{L}*)(?![^<]*>)/iu';
-                        $replacement = '<span style="color: #ff4d4d; font-weight: bold; text-decoration: underline;">$1</span>';
-                        $card_title = preg_replace($pattern, $replacement, $card_title);
-                        $card_excerpt = preg_replace($pattern, $replacement, $card_excerpt);
-                    }
+        $wpdb->delete($alias_table, ['allergen_id' => $allergen_id]); 
+        if (!empty($_POST['aliases'])) {
+            $aliases = explode(',', $_POST['aliases']);
+            foreach ($aliases as $alias) {
+                $alias = trim(sanitize_text_field($alias));
+                if ($alias) {
+                    $wpdb->insert($alias_table, ['allergen_id' => $allergen_id, 'alias_name' => $alias]);
                 }
             }
-
-            // А ось червону рамку і бірку показуємо ТІЛЬКИ якщо користувач увімкнув повзунок Highlight
-            $card_class = "recipe-card-block" . ($found_allergen && $is_highlight ? " recipe-card-danger" : "");
-            $badge_html = ($found_allergen && $is_highlight) ? '<div class="allergen-card-badge">⚠️ CONTAINS ' . mb_strtoupper(esc_html($found_allergen), 'UTF-8') . '</div>' : "";
-
-            $output .= '<div class="' . $card_class . '">' . $badge_html . $img_div . '
-                <div class="recipe-card-content"><h4>' . $card_title . '</h4><p>' . $card_excerpt . '</p>
-                <a href="' . get_permalink() . '" class="recipe-card-btn">View Recipe</a></div></div>';
         }
-        wp_reset_postdata();
-    } else {
-        $output .= '<p>No recipes found.</p>';
+        echo '<script>window.location.href="admin.php?page=allergen-main&tab=list";</script>';
     }
-    $output .= '</div><style>
-    .recipe-grid-container { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 25px; padding: 20px 0; }
-    .recipe-card-block { background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.1); transition: transform 0.3s ease; border: 1px solid #eee; position: relative; display: flex; flex-direction: column;}
-    .recipe-card-block:hover { transform: translateY(-5px); }
-    .recipe-card-danger { border: 3px solid #ff4d4d; }
-    .allergen-card-badge { position: absolute; top: 10px; left: 10px; background: #ff4d4d; color: white; padding: 5px 10px; font-size: 12px; font-weight: bold; border-radius: 6px; z-index: 2; box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
-    .recipe-card-image { height: 180px; background-size: cover; background-position: center; border-bottom: 1px solid #eee; }
-    .recipe-card-content { padding: 20px; flex-grow: 1; display: flex; flex-direction: column; }
-    .recipe-card-content h4 { margin: 0 0 10px 0; font-size: 18px; color: #333; line-height: 1.4; }
-    .recipe-card-content p { font-size: 14px; color: #666; margin-bottom: 20px; flex-grow: 1; }
-    .recipe-card-btn { display: inline-block; padding: 10px 15px; background: #ff4d4d; color: white !important; text-decoration: none !important; border-radius: 5px; font-weight: bold; font-size: 14px; text-align: center; }
-    .recipe-card-btn:hover { background: #d94343; }
-    </style>';
-    return $output;
+
+    echo '<div class="wrap"><h1>Allergen Management</h1>';
+    
+    echo '<h2 class="nav-tab-wrapper">
+        <a href="?page=allergen-main&tab=list" class="nav-tab '.($tab=='list'?'nav-tab-active':'').'">Allergen List</a>
+        <a href="?page=allergen-main&tab=add" class="nav-tab '.($tab=='add'?'nav-tab-active':'').'">+ Add New Allergen</a>
+    </h2>';
+
+    if ($tab == 'list') {
+        $items = $wpdb->get_results("
+            SELECT a.*, g.group_name, GROUP_CONCAT(al.alias_name SEPARATOR ', ') as synonyms 
+            FROM $table a 
+            LEFT JOIN allergen_groups g ON a.group_id = g.group_id 
+            LEFT JOIN $alias_table al ON a.allergen_id = al.allergen_id
+            GROUP BY a.allergen_id
+        ");
+
+        echo '<table class="wp-list-table widefat fixed striped" style="margin-top:20px;">
+                <thead><tr><th>Name</th><th>Synonyms (Technical)</th><th>Group</th><th>Actions</th></tr></thead><tbody>';
+        foreach ($items as $item) {
+            echo "<tr>
+                <td><strong>{$item->allergen_name}</strong></td>
+                <td><small style='color:#666;'>".($item->synonyms ? $item->synonyms : '—')."</small></td>
+                <td>".($item->group_name ? $item->group_name : '—')."</td>
+                <td>
+                    <a href='?page=allergen-main&tab=add&edit={$item->allergen_id}'>Edit</a> | 
+                    <a href='?page=allergen-main&del={$item->allergen_id}' style='color:red;' onclick='return confirm(\"Are you sure you want to delete this?\")'>Delete</a>
+                </td></tr>";
+        }
+        echo '</tbody></table>';
+
+        echo '<div style="clear:both; margin-top: 40px;"></div>';
+
+        // ==========================================
+        // SMART CHECK & AUTO-FIX (OPEN FOOD FACTS)
+        // ==========================================
+        echo '<div style="background: #fff; padding: 20px; border: 1px solid #ccd0d4; box-shadow: 0 1px 1px rgba(0,0,0,.04); border-radius: 4px; margin-bottom: 20px;">';
+        echo '<h2 style="margin-top:0;">Smart Synonym Check & Auto-Correction</h2>';
+        echo '<p>The script will cross-reference your synonyms with the Open Food Facts database. Exact typos (e.g. Peanot -> Peanut) <strong>will be fixed automatically</strong>.</p>';
+
+        if (isset($_POST['run_api_check'])) {
+            $query_aliases = "SELECT alias_id, alias_name FROM $alias_table WHERE alias_name IS NOT NULL AND alias_name != ''";
+            $results_aliases = $wpdb->get_results($query_aliases);
+
+            if ($results_aliases) {
+                $all_words_array = [];
+                foreach ($results_aliases as $row) {
+                    $words_in_row = explode(',', $row->alias_name);
+                    foreach ($words_in_row as $w) if (trim($w) !== '') $all_words_array[] = trim($w);
+                }
+                
+                $all_words_string = implode(',', array_filter($all_words_array));
+                $api_result = check_allergens_via_open_food_facts($all_words_string);
+
+                if (is_string($api_result)) {
+                    echo "<div style='background: #fff; padding: 15px; border-left: 4px solid #dc3232; margin-bottom: 20px;'><strong>❌ Error:</strong> " . esc_html($api_result) . "</div>";
+                } else {
+                    if (!empty($api_result['corrected'])) {
+                        foreach ($api_result['corrected'] as $old_word => $new_word) {
+                            $wpdb->update($alias_table, ['alias_name' => strtolower($new_word)], ['alias_name' => strtolower($old_word)]);
+                        }
+                    }
+
+                    echo "<div style='background: #f6fdf6; padding: 15px; border-left: 4px solid #46b450; margin-bottom: 10px;'><strong>✅ Correct words:</strong><br>" . esc_html(implode(', ', $api_result['found'])) . "</div>";
+
+                    if (!empty($api_result['corrected'])) {
+                        echo "<div style='background: #fffaf0; padding: 15px; border-left: 4px solid #ffba00; margin-bottom: 10px;'><strong>⚡ AUTOMATICALLY FIXED IN DB:</strong><br>";
+                        foreach ($api_result['corrected'] as $old => $new) echo "<span style='text-decoration:line-through; color:#888;'>$old</span> ➔ <strong>$new</strong><br>";
+                        echo "</div>";
+                    }
+
+                    echo "<div style='background: #fdf6f6; padding: 15px; border-left: 4px solid #dc3232; margin-bottom: 20px;'><strong>❌ NOT found (Check manually):</strong><br>";
+                    echo !empty($api_result['not_found']) ? esc_html(implode(', ', $api_result['not_found'])) : "None found!";
+                    echo "</div>";
+                }
+            } else {
+                echo '<p>There are no synonyms in the database to check yet.</p>';
+            }
+        }
+
+        echo '<form method="post"><input type="hidden" name="run_api_check" value="1"><input type="submit" class="button button-primary" value="Check and Fix Typos"></form>';
+        echo '</div>';
+
+
+        // ==========================================
+        // AUTO-IMPORT DATABASE FROM API
+        // ==========================================
+        echo '<div style="background: #fff; padding: 20px; border: 1px solid #ccd0d4; box-shadow: 0 1px 1px rgba(0,0,0,.04); border-radius: 4px; margin-bottom: 20px;">';
+        echo '<h2 style="margin-top:0;">Initial Database Load (Auto-import)</h2>';
+        echo '<p>Downloads the global allergen database (Open Food Facts) and adds missing ingredients to your tables.</p>';
+
+        if (isset($_POST['run_auto_import'])) {
+            set_time_limit(300); 
+            $api_url = 'https://world.openfoodfacts.org/data/taxonomies/allergens.json';
+            $response = wp_remote_get($api_url, array('timeout' => 25));
+            
+            if (is_wp_error($response)) {
+                echo "<div style='background: #fdf6f6; padding: 15px; border-left: 4px solid #dc3232; margin-bottom: 20px;'><strong>❌ Connection Error:</strong> " . esc_html($response->get_error_message()) . "</div>";
+            } else {
+                $body = wp_remote_retrieve_body($response);
+                $allergens_data = json_decode($body, true);
+                
+                if ($allergens_data) {
+                    $added_count = 0; $synonyms_count = 0;
+                    foreach ($allergens_data as $key => $info) {
+                        if (isset($info['name']['en'])) {
+                            $main_name = sanitize_text_field(ucfirst($info['name']['en']));
+                            $exists = $wpdb->get_var($wpdb->prepare("SELECT allergen_id FROM allergens WHERE allergen_name = %s", $main_name));
+                            if (!$exists) {
+                                $wpdb->insert('allergens', ['allergen_name' => $main_name, 'group_id' => 0]);
+                                $new_allergen_id = $wpdb->insert_id;
+                                $added_count++;
+                                if (isset($info['synonyms']['en'])) {
+                                    foreach ($info['synonyms']['en'] as $synonym) {
+                                        $wpdb->insert('allergen_aliases', ['allergen_id' => $new_allergen_id, 'alias_name' => sanitize_text_field(strtolower($synonym))]);
+                                        $synonyms_count++;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    echo "<div style='background: #f6fdf6; padding: 15px; border-left: 4px solid #46b450; margin-bottom: 20px; margin-top: 15px;'><strong>✅ Success!</strong> New allergens loaded: <b>$added_count</b>. Synonyms added: <b>$synonyms_count</b>.</div>";
+                }
+            }
+        }
+
+        echo '<form method="post"><input type="hidden" name="run_auto_import" value="1"><input type="submit" class="button" value="⬇️ Download and Import Allergens" onclick="return confirm(\'Start import? This will add dozens of items to your database.\');"></form>';
+        echo '</div>';
+
+    } else {
+        $edit_id = isset($_GET['edit']) ? intval($_GET['edit']) : 0;
+        $row = $edit_id ? $wpdb->get_row("SELECT * FROM $table WHERE allergen_id = $edit_id") : null;
+        $existing_aliases = $edit_id ? $wpdb->get_col("SELECT alias_name FROM $alias_table WHERE allergen_id = $edit_id") : [];
+        $groups = $wpdb->get_results("SELECT * FROM allergen_groups");
+        ?>
+        <div class="card" style="max-width: 600px; margin-top: 20px;">
+            <form method="post">
+                <input type="hidden" name="id" value="<?php echo $edit_id; ?>">
+                <table class="form-table">
+                    <tr><th>Main Name:</th><td><input type="text" name="name" value="<?php echo $row?$row->allergen_name:''; ?>" required class="regular-text"></td></tr>
+                    <tr><th>Synonyms (comma separated):</th><td><textarea name="aliases" rows="3" class="large-text"><?php echo implode(', ', $existing_aliases); ?></textarea></td></tr>
+                    <tr><th>Group:</th><td>
+                        <select name="group_id" style="width: 25em;">
+                            <option value="0">No Group</option>
+                            <?php foreach($groups as $g) echo "<option value='{$g->group_id}' ".($row && $row->group_id==$g->group_id?'selected':'').">{$g->group_name}</option>"; ?>
+                        </select>
+                    </td></tr>
+                </table>
+                <p><input type="submit" name="save_allergen" class="button button-primary" value="Save Allergen & Synonyms"></p>
+            </form>
+        </div>
+        <?php
+    }
+    echo '</div>'; 
 }
+
+function render_groups_page_pro() {
+    global $wpdb;
+    $table = 'allergen_groups';
+    
+    if (isset($_POST['save_group'])) {
+        $wpdb->insert($table, [
+            'group_name' => sanitize_text_field($_POST['gname']), 
+            'description' => sanitize_textarea_field($_POST['gdesc'])
+        ]);
+    }
+
+    echo '<div class="wrap"><h1>Allergen Groups</h1>';
+    ?>
+    <div style="display: flex; gap: 20px; margin-top: 20px;">
+        <div class="card" style="flex: 1; height: fit-content;">
+            <h3>Create New Group</h3>
+            <form method="post">
+                <p><label>Group Name:</label><br><input type="text" name="gname" required style="width:100%"></p>
+                <p><label>Description:</label><br><textarea name="gdesc" style="width:100%"></textarea></p>
+                <p><input type="submit" name="save_group" class="button button-primary" value="Create Group"></p>
+            </form>
+        </div>
+        <div style="flex: 2;">
+            <table class="wp-list-table widefat fixed striped">
+                <thead><tr><th>Group Name</th><th>Description</th></tr></thead>
+                <tbody>
+                    <?php
+                    $groups = $wpdb->get_results("SELECT * FROM $table");
+                    foreach ($groups as $g) echo "<tr><td><strong>{$g->group_name}</strong></td><td>{$g->description}</td></tr>";
+                    ?>
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <?php
+    echo '</div>';
+}
+
+// ==========================================
+// 6. OPEN FOOD FACTS API LOGIC
+// ==========================================
+function check_allergens_via_open_food_facts($user_input_string) {
+    $words_to_check = array_map('trim', explode(',', $user_input_string));
+    $api_url = 'https://world.openfoodfacts.org/data/taxonomies/allergens.json';
+    $response = wp_remote_get($api_url, array('timeout' => 15));
+    
+    if (is_wp_error($response)) {
+        return "API connection error: " . $response->get_error_message();
+    }
+    
+    $body = wp_remote_retrieve_body($response);
+    $allergens_data = json_decode($body, true);
+    
+    if (!$allergens_data) return "API data decoding error.";
+
+    $all_known_synonyms = [];
+    foreach ($allergens_data as $allergen_info) {
+        if (isset($allergen_info['name']['en'])) $all_known_synonyms[] = strtolower($allergen_info['name']['en']);
+        if (isset($allergen_info['synonyms']['en'])) {
+            foreach ($allergen_info['synonyms']['en'] as $synonym) {
+                $all_known_synonyms[] = strtolower($synonym);
+            }
+        }
+    }
+    
+    $results = ['found' => [], 'corrected' => [], 'not_found' => []];
+    
+    foreach ($words_to_check as $word) {
+        if (empty($word)) continue;
+        
+        $word_lower = strtolower($word);
+        
+        if (in_array($word_lower, $all_known_synonyms)) {
+            $results['found'][] = $word;
+            continue;
+        } 
+        
+        $closest_word = '';
+        $shortest_distance = -1;
+        
+        foreach ($all_known_synonyms as $known_synonym) {
+            $lev = levenshtein($word_lower, $known_synonym);
+            
+            if ($lev <= $shortest_distance || $shortest_distance < 0) {
+                $closest_word  = $known_synonym;
+                $shortest_distance = $lev;
+            }
+        }
+        
+        if ($shortest_distance > 0 && $shortest_distance <= 2) {
+            $results['corrected'][$word] = ucfirst($closest_word); 
+        } else {
+            $results['not_found'][] = $word;
+        }
+    }
+    return $results;
+}
+
+// ==========================================
+// 7. FIX LOCALHOST SMTP (FOR XAMPP EMAILS)
+// ==========================================
+add_filter( 'wp_mail_smtp_custom_options', function( $phpmailer ) {
+    $phpmailer->SMTPOptions = array(
+        'ssl' => array(
+            'verify_peer'       => false,
+            'verify_peer_name'  => false,
+            'allow_self_signed' => true
+        )
+    );
+    return $phpmailer;
+} );
+?>
