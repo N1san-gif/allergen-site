@@ -1,8 +1,8 @@
 <?php
 /*
 Plugin Name: Allergen Profile Ultimate
-Version: 30.0
-Description: Full version: 100% English UI, Smart Generics, Auto-open modal, Synonym Check & Auto-fix, Database Auto-import from Open Food Facts.
+Version: 31.0
+Description: Final version: 100% English UI, Auto-import fixed for strict MySQL, Auto-refresh after import, Smart Generics, Synonym Auto-fix.
 */
 
 // ==========================================
@@ -647,7 +647,7 @@ function render_allergen_page_pro() {
         // ==========================================
         echo '<div style="background: #fff; padding: 20px; border: 1px solid #ccd0d4; box-shadow: 0 1px 1px rgba(0,0,0,.04); border-radius: 4px; margin-bottom: 20px;">';
         echo '<h2 style="margin-top:0;">Smart Synonym Check & Auto-Correction</h2>';
-        echo '<p>The script will cross-reference your synonyms with the Open Food Facts database. Exact typos (e.g. Peanot -> Peanut) <strong>will be fixed automatically</strong>.</p>';
+        echo '<p>Cross-reference your synonyms with the Open Food Facts database. Exact typos (e.g. Peanot -> Peanut) <strong>will be fixed automatically</strong>.</p>';
 
         if (isset($_POST['run_api_check'])) {
             $query_aliases = "SELECT alias_id, alias_name FROM $alias_table WHERE alias_name IS NOT NULL AND alias_name != ''";
@@ -696,46 +696,140 @@ function render_allergen_page_pro() {
         // ==========================================
         // AUTO-IMPORT DATABASE FROM API
         // ==========================================
+        // ==========================================
+        // БРОНЕБОЙНЫЙ АВТО-ИМПОРТ (БЕЗ GROUP_ID И С ПОКАЗОМ ОШИБОК)
+        // ==========================================
+        // ==========================================
+        // БРОНЕБОЙНЫЙ АВТО-ИМПОРТ (СОХРАНЯЕТ СВЯЗИ И СОЗДАЕТ ГРУППУ)
+        // ==========================================
+        // ==========================================
+        // УМНЫЙ АВТО-ИМПОРТ С АВТО-РАСПРЕДЕЛЕНИЕМ ПО ГРУППАМ
+        // ==========================================
+        // ==========================================
+        // DUAL-SOURCE IMPORT (ALLERGENS + SYNONYMS)
+        // ==========================================
         echo '<div style="background: #fff; padding: 20px; border: 1px solid #ccd0d4; box-shadow: 0 1px 1px rgba(0,0,0,.04); border-radius: 4px; margin-bottom: 20px;">';
-        echo '<h2 style="margin-top:0;">Initial Database Load (Auto-import)</h2>';
-        echo '<p>Downloads the global allergen database (Open Food Facts) and adds missing ingredients to your tables.</p>';
+        echo '<h2 style="margin-top:0;">🌐 Smart Multi-Import</h2>';
+        echo '<p>Downloads the base allergens and attaches your custom synonyms database.</p>';
 
         if (isset($_POST['run_auto_import'])) {
             set_time_limit(300); 
-            $api_url = 'https://world.openfoodfacts.org/data/taxonomies/allergens.json';
-            $response = wp_remote_get($api_url, array('timeout' => 25));
+            global $wpdb;
+            $wpdb->show_errors();
             
-            if (is_wp_error($response)) {
-                echo "<div style='background: #fdf6f6; padding: 15px; border-left: 4px solid #dc3232; margin-bottom: 20px;'><strong>❌ Connection Error:</strong> " . esc_html($response->get_error_message()) . "</div>";
-            } else {
-                $body = wp_remote_retrieve_body($response);
-                $allergens_data = json_decode($body, true);
-                
+            // ---------------------------------------------------------
+            // 📍 YOUR DATA SOURCES
+            // ---------------------------------------------------------
+            $api_url_allergens = 'https://world.openfoodfacts.org/data/taxonomies/allergens.json';
+            
+            // 👇👇👇 PASTE YOUR RAW GITHUB LINK BETWEEN THE QUOTES 👇👇👇
+            $api_url_synonyms = 'https://gist.githubusercontent.com/N1san-gif/f52ef75e4cd0e43c182351683686a55e/raw/3b6032d250811729b1f3142883ef1c3c7c634dca/gistfile1.txt'; 
+            // ---------------------------------------------------------
+
+            $added_count = 0; 
+            $synonyms_count = 0;
+
+            // 1. SMART CATEGORIES (Tailored for your fruits, meats, and mushrooms)
+            $smart_categories = [
+                'Dairy & Milk'     => ['milk', 'dairy', 'cheese', 'butter', 'whey', 'lactose', 'casein'],
+                'Nuts & Peanuts'   => ['nut', 'almond', 'pecan', 'cashew', 'pistachio', 'macadamia', 'walnut', 'peanut'],
+                'Seafood & Fish'   => ['fish', 'crustacean', 'mollusc', 'shrimp', 'crab', 'salmon', 'oyster', 'shellfish', 'squid', 'caviar'],
+                'Gluten & Cereals' => ['wheat', 'gluten', 'barley', 'rye', 'oat', 'spelt', 'cereal', 'kamut'],
+                'Eggs'             => ['egg'],
+                'Soy'              => ['soy', 'soybean'],
+                'Mustard & Celery' => ['mustard', 'celery'],
+                'Fruits'           => ['apple', 'banana', 'orange', 'kiwi', 'peach', 'fruit'],
+                'Meat & Poultry'   => ['beef', 'pork', 'chicken', 'meat', 'poultry', 'gelatin'],
+                'Seeds & Lupin'    => ['sesame', 'lupin', 'seed'],
+                'Mushrooms & Roots'=> ['matsutake', 'yamaimo', 'mushroom'],
+                'Sulphites'        => ['sulphur', 'sulfite', 'sulphite'],
+                'Other / Uncategorized' => []
+            ];
+
+            // Create groups in the DB if they don't exist
+            $category_ids = [];
+            foreach ($smart_categories as $cat_name => $keywords) {
+                $c_id = $wpdb->get_var($wpdb->prepare("SELECT group_id FROM allergen_groups WHERE group_name = %s", $cat_name));
+                if (!$c_id) {
+                    $wpdb->insert('allergen_groups', ['group_name' => $cat_name, 'description' => 'Auto-category']);
+                    $c_id = $wpdb->insert_id;
+                }
+                $category_ids[$cat_name] = $c_id;
+            }
+
+            // STEP 1: Download allergens
+            $response_1 = wp_remote_get($api_url_allergens, array('timeout' => 30));
+            if (!is_wp_error($response_1)) {
+                $allergens_data = json_decode(wp_remote_retrieve_body($response_1), true);
                 if ($allergens_data) {
-                    $added_count = 0; $synonyms_count = 0;
                     foreach ($allergens_data as $key => $info) {
                         if (isset($info['name']['en'])) {
-                            $main_name = sanitize_text_field(ucfirst($info['name']['en']));
-                            $exists = $wpdb->get_var($wpdb->prepare("SELECT allergen_id FROM allergens WHERE allergen_name = %s", $main_name));
-                            if (!$exists) {
-                                $wpdb->insert('allergens', ['allergen_name' => $main_name, 'group_id' => 0]);
-                                $new_allergen_id = $wpdb->insert_id;
-                                $added_count++;
-                                if (isset($info['synonyms']['en'])) {
-                                    foreach ($info['synonyms']['en'] as $synonym) {
-                                        $wpdb->insert('allergen_aliases', ['allergen_id' => $new_allergen_id, 'alias_name' => sanitize_text_field(strtolower($synonym))]);
+                            $main_name = sanitize_text_field(ucfirst(trim($info['name']['en'])));
+                            $name_lower = strtolower($main_name);
+                            
+                            $exists_id = $wpdb->get_var($wpdb->prepare("SELECT allergen_id FROM allergens WHERE allergen_name = %s", $main_name));
+                            if (!$exists_id) {
+                                // Find the correct category
+                                $assigned_group_id = $category_ids['Other / Uncategorized'];
+                                $found_cat = false;
+                                foreach ($smart_categories as $cat_name => $keywords) {
+                                    if ($cat_name === 'Other / Uncategorized') continue;
+                                    foreach ($keywords as $kw) {
+                                        if (strpos($name_lower, $kw) !== false) {
+                                            $assigned_group_id = $category_ids[$cat_name];
+                                            $found_cat = true;
+                                            break;
+                                        }
+                                    }
+                                    if ($found_cat) break;
+                                }
+
+                                $wpdb->insert('allergens', ['allergen_name' => $main_name, 'group_id' => $assigned_group_id]);
+                                if ($wpdb->insert_id) $added_count++;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // STEP 2: Download synonyms from your GitHub Gist
+            if (strpos($api_url_synonyms, 'http') === 0) {
+                $response_2 = wp_remote_get($api_url_synonyms, array('timeout' => 30));
+                if (!is_wp_error($response_2)) {
+                    $synonyms_data = json_decode(wp_remote_retrieve_body($response_2), true);
+                    if ($synonyms_data && is_array($synonyms_data)) {
+                        foreach ($synonyms_data as $base_allergen => $synonym_list) {
+                            $base_allergen_clean = sanitize_text_field(ucfirst(trim($base_allergen)));
+                            $allergen_id = $wpdb->get_var($wpdb->prepare("SELECT allergen_id FROM allergens WHERE allergen_name = %s", $base_allergen_clean));
+                            
+                            if ($allergen_id && is_array($synonym_list)) {
+                                foreach ($synonym_list as $syn) {
+                                    $clean_syn = sanitize_text_field(strtolower(trim($syn)));
+                                    $syn_exists = $wpdb->get_var($wpdb->prepare("SELECT alias_id FROM allergen_aliases WHERE allergen_id = %d AND alias_name = %s", $allergen_id, $clean_syn));
+                                    
+                                    if (!$syn_exists && !empty($clean_syn)) {
+                                        $wpdb->insert('allergen_aliases', ['allergen_id' => $allergen_id, 'alias_name' => $clean_syn]);
                                         $synonyms_count++;
                                     }
                                 }
                             }
                         }
                     }
-                    echo "<div style='background: #f6fdf6; padding: 15px; border-left: 4px solid #46b450; margin-bottom: 20px; margin-top: 15px;'><strong>✅ Success!</strong> New allergens loaded: <b>$added_count</b>. Synonyms added: <b>$synonyms_count</b>.</div>";
+                } else {
+                    echo "<div style='color:#ffba00;'>⚠️ Failed to download synonyms. Please check your GitHub link.</div>";
                 }
             }
+
+            if ($added_count > 0 || $synonyms_count > 0) {
+                echo "<div style='background: #f6fdf6; padding: 15px; border-left: 4px solid #46b450; margin-bottom: 20px; margin-top: 15px;'><strong>✅ Success!</strong><br>New allergens added: <b>$added_count</b>.<br>Synonyms loaded: <b>$synonyms_count</b>.</div>";
+                echo "<script>setTimeout(function(){ window.location.href = 'admin.php?page=allergen-main&tab=list'; }, 2000);</script>";
+            } else {
+                echo "<div style='background: #fffaf0; padding: 15px; border-left: 4px solid #ffba00; margin-bottom: 20px; margin-top: 15px;'><strong>⚠️ No new data.</strong> Everything might already be imported.</div>";
+            }
+            $wpdb->hide_errors();
         }
 
-        echo '<form method="post"><input type="hidden" name="run_auto_import" value="1"><input type="submit" class="button" value="⬇️ Download and Import Allergens" onclick="return confirm(\'Start import? This will add dozens of items to your database.\');"></form>';
+        echo '<form method="post"><input type="hidden" name="run_auto_import" value="1"><input type="submit" class="button button-primary" value="⬇️ Run Multi-Import"></form>';
         echo '</div>';
 
     } else {
