@@ -1,8 +1,8 @@
 <?php
 /*
 Plugin Name: Allergen Profile Ultimate
-Version: 31.0
-Description: Final version: 100% English UI, Auto-import fixed for strict MySQL, Auto-refresh after import, Smart Generics, Synonym Auto-fix.
+Version: 32.0
+Description: Final version: 100% English UI, Auto-import fixed, Smart Generics, Synonym Auto-fix + Recipe Custom Shortcode Grid.
 */
 
 // ==========================================
@@ -694,18 +694,6 @@ function render_allergen_page_pro() {
 
 
         // ==========================================
-        // AUTO-IMPORT DATABASE FROM API
-        // ==========================================
-        // ==========================================
-        // БРОНЕБОЙНЫЙ АВТО-ИМПОРТ (БЕЗ GROUP_ID И С ПОКАЗОМ ОШИБОК)
-        // ==========================================
-        // ==========================================
-        // БРОНЕБОЙНЫЙ АВТО-ИМПОРТ (СОХРАНЯЕТ СВЯЗИ И СОЗДАЕТ ГРУППУ)
-        // ==========================================
-        // ==========================================
-        // УМНЫЙ АВТО-ИМПОРТ С АВТО-РАСПРЕДЕЛЕНИЕМ ПО ГРУППАМ
-        // ==========================================
-        // ==========================================
         // DUAL-SOURCE IMPORT (ALLERGENS + SYNONYMS)
         // ==========================================
         echo '<div style="background: #fff; padding: 20px; border: 1px solid #ccd0d4; box-shadow: 0 1px 1px rgba(0,0,0,.04); border-radius: 4px; margin-bottom: 20px;">';
@@ -970,4 +958,60 @@ add_filter( 'wp_mail_smtp_custom_options', function( $phpmailer ) {
     );
     return $phpmailer;
 } );
+
+// ==========================================
+// 8. RECIPES SHORTCODE [allergen_recipes]
+// ==========================================
+add_shortcode('allergen_recipes', 'allergen_display_recipes_shortcode');
+
+function allergen_display_recipes_shortcode($atts) {
+    // Настраиваем запрос: берем все записи типа "recipe"
+    $args = array(
+        'post_type'      => 'recipe',
+        'posts_per_page' => -1, // -1 значит выводить все. Можно поставить 10 или 20.
+        'post_status'    => 'publish'
+    );
+
+    $recipes_query = new WP_Query($args);
+    
+    // Создаем контейнер для красивой CSS Grid-сетки
+    $output = '<div class="allergen-recipe-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px; margin-top: 20px;">';
+
+    if ($recipes_query->have_posts()) {
+        while ($recipes_query->have_posts()) {
+            $recipes_query->the_post();
+            
+            $title = get_the_title();
+            $link = get_permalink();
+            $excerpt = wp_trim_words(get_the_excerpt(), 15, '...');
+            
+            // Пытаемся получить фото рецепта (миниатюру записи)
+            $img_url = get_the_post_thumbnail_url(get_the_ID(), 'medium');
+            
+            // Если фото есть - выводим его. Если нет - выводим серую заглушку
+            $img_html = $img_url ? '<img src="' . esc_url($img_url) . '" alt="' . esc_attr($title) . '" style="width: 100%; height: 200px; object-fit: cover; border-radius: 8px 8px 0 0; margin-bottom: 0;">' : '<div style="width: 100%; height: 200px; background: #f1f3f5; border-radius: 8px 8px 0 0; display: flex; align-items: center; justify-content: center; color: #aaa;">No image</div>';
+
+            // Формируем саму карточку рецепта
+            $output .= '<div class="recipe-card" style="border: 1px solid #eaeaea; border-radius: 8px; background: #fff; box-shadow: 0 4px 6px rgba(0,0,0,0.05); transition: transform 0.2s;">';
+            $output .= '<a href="' . esc_url($link) . '" style="text-decoration: none; color: inherit; display: block;">';
+            $output .= $img_html;
+            $output .= '<div style="padding: 15px;">';
+            $output .= '<h3 style="margin: 0 0 10px 0; font-size: 18px; color: #333;">' . esc_html($title) . '</h3>';
+            $output .= '<p style="margin: 0; font-size: 14px; color: #666; line-height: 1.5;">' . esc_html($excerpt) . '</p>';
+            $output .= '</div>';
+            $output .= '</a>';
+            $output .= '</div>';
+        }
+        wp_reset_postdata();
+    } else {
+        $output .= '<p style="grid-column: 1 / -1; text-align: center; color: #777;">Рецепты пока не добавлены.</p>';
+    }
+
+    $output .= '</div>';
+
+    // Добавляем эффект парения (hover) при наведении мышки на карточку
+    $output .= '<style>.recipe-card:hover { transform: translateY(-5px); box-shadow: 0 8px 15px rgba(0,0,0,0.1) !important; }</style>';
+
+    return $output;
+}
 ?>
