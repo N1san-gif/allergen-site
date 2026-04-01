@@ -965,17 +965,27 @@ add_filter( 'wp_mail_smtp_custom_options', function( $phpmailer ) {
 add_shortcode('allergen_recipes', 'allergen_display_recipes_shortcode');
 
 function allergen_display_recipes_shortcode($atts) {
-    // Настраиваем запрос: берем все записи типа "recipe"
     $args = array(
         'post_type'      => 'recipe',
-        'posts_per_page' => -1, // -1 значит выводить все. Можно поставить 10 или 20.
+        'posts_per_page' => -1,
         'post_status'    => 'publish'
     );
 
     $recipes_query = new WP_Query($args);
     
-    // Создаем контейнер для красивой CSS Grid-сетки
     $output = '<div class="allergen-recipe-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px; margin-top: 20px;">';
+
+    // 1. ПОЛУЧАЕМ НАСТРОЙКИ ПОЛЬЗОВАТЕЛЯ
+    $user_id = get_current_user_id();
+    $forbidden_words = [];
+    $is_strict = false;
+    $is_highlight = false;
+
+    if (is_user_logged_in()) {
+        $forbidden_words = allergen_get_user_forbidden_words($user_id);
+        $is_strict = get_user_meta($user_id, 'allergen_setting_strict', true) === '1';
+        $is_highlight = get_user_meta($user_id, 'allergen_setting_highlight', true) === '1';
+    }
 
     if ($recipes_query->have_posts()) {
         while ($recipes_query->have_posts()) {
@@ -984,18 +994,42 @@ function allergen_display_recipes_shortcode($atts) {
             $title = get_the_title();
             $link = get_permalink();
             $excerpt = wp_trim_words(get_the_excerpt(), 15, '...');
-            
-            // Пытаемся получить фото рецепта (миниатюру записи)
+            $full_content = get_the_content(); // Берем весь текст рецепта для сканирования
             $img_url = get_the_post_thumbnail_url(get_the_ID(), 'medium');
             
-            // Если фото есть - выводим его. Если нет - выводим серую заглушку
-            $img_html = $img_url ? '<img src="' . esc_url($img_url) . '" alt="' . esc_attr($title) . '" style="width: 100%; height: 200px; object-fit: cover; border-radius: 8px 8px 0 0; margin-bottom: 0;">' : '<div style="width: 100%; height: 200px; background: #f1f3f5; border-radius: 8px 8px 0 0; display: flex; align-items: center; justify-content: center; color: #aaa;">No image</div>';
+            // 2. ИЩЕМ АЛЛЕРГЕНЫ В ТЕКСТЕ И ЗАГОЛОВКЕ
+            $found_allergen = null;
+            if (!empty($forbidden_words)) {
+                $text_to_check = $title . ' ' . $full_content;
+                $found_allergen = allergen_find_in_text($text_to_check, $forbidden_words);
+            }
 
-            // Формируем саму карточку рецепта
-            $output .= '<div class="recipe-card" style="border: 1px solid #eaeaea; border-radius: 8px; background: #fff; box-shadow: 0 4px 6px rgba(0,0,0,0.05); transition: transform 0.2s;">';
-            $output .= '<a href="' . esc_url($link) . '" style="text-decoration: none; color: inherit; display: block;">';
+            // 3. ЕСЛИ ВКЛЮЧЕН СТРОГИЙ РЕЖИМ (STRICT) - БЛОКИРУЕМ КАРТОЧКУ
+            if ($found_allergen && $is_strict) {
+                $output .= '<div class="recipe-card blocked-card" style="border: 2px dashed #ff4d4d; border-radius: 8px; background: #fff0f0; padding: 20px; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align: center; color: #d9534f; opacity: 0.8; height: 100%; min-height: 280px;">';
+                $output .= '<span style="font-size: 30px; margin-bottom: 10px;">🚫</span>';
+                $output .= '<strong>Blocked by Profile</strong><br><small style="color: #666; margin-top: 5px;">Contains: <b style="color:#d9534f;">' . esc_html(ucfirst($found_allergen)) . '</b></small>';
+                $output .= '</div>';
+                continue; // Переходим к следующему рецепту
+            }
+
+            // 4. ЕСЛИ ВКЛЮЧЕН РЕЖИМ ПОДСВЕТКИ (HIGHLIGHT) - ДЕЛАЕМ КРАСНУЮ РАМКУ
+            $card_style = 'border: 1px solid #eaeaea; border-radius: 8px; background: #fff; box-shadow: 0 4px 6px rgba(0,0,0,0.05); transition: transform 0.2s; position: relative; display: flex; flex-direction: column; height: 100%;';
+            $warning_badge = '';
+            
+            if ($found_allergen && $is_highlight) {
+                $card_style = 'border: 3px solid #ff4d4d; border-radius: 8px; background: #fffdfd; box-shadow: 0 4px 15px rgba(255,77,77,0.15); transition: transform 0.2s; position: relative; display: flex; flex-direction: column; height: 100%;';
+                $warning_badge = '<div style="position: absolute; top: 10px; right: 10px; background: #ff4d4d; color: white; padding: 5px 10px; border-radius: 6px; font-size: 12px; font-weight: bold; z-index: 2; box-shadow: 0 2px 5px rgba(0,0,0,0.2);">⚠️ ' . esc_html(ucfirst($found_allergen)) . '</div>';
+            }
+            
+            $img_html = $img_url ? '<img src="' . esc_url($img_url) . '" alt="' . esc_attr($title) . '" style="width: 100%; height: 180px; object-fit: cover; border-radius: 5px 5px 0 0; margin-bottom: 0;">' : '<div style="width: 100%; height: 180px; background: #f1f3f5; border-radius: 5px 5px 0 0; display: flex; align-items: center; justify-content: center; color: #aaa;">No image</div>';
+
+            // 5. ВЫВОДИМ САМУ КАРТОЧКУ
+            $output .= '<div class="recipe-card" style="' . $card_style . '">';
+            $output .= $warning_badge;
+            $output .= '<a href="' . esc_url($link) . '" style="text-decoration: none; color: inherit; flex-grow: 1; display: flex; flex-direction: column;">';
             $output .= $img_html;
-            $output .= '<div style="padding: 15px;">';
+            $output .= '<div style="padding: 15px; flex-grow: 1;">';
             $output .= '<h3 style="margin: 0 0 10px 0; font-size: 18px; color: #333;">' . esc_html($title) . '</h3>';
             $output .= '<p style="margin: 0; font-size: 14px; color: #666; line-height: 1.5;">' . esc_html($excerpt) . '</p>';
             $output .= '</div>';
@@ -1004,13 +1038,11 @@ function allergen_display_recipes_shortcode($atts) {
         }
         wp_reset_postdata();
     } else {
-        $output .= '<p style="grid-column: 1 / -1; text-align: center; color: #777;">Рецепты пока не добавлены.</p>';
+        $output .= '<p style="grid-column: 1 / -1; text-align: center; color: #777; padding: 40px; background: #f9f9f9; border-radius: 10px;">Рецепты пока не добавлены.</p>';
     }
 
     $output .= '</div>';
-
-    // Добавляем эффект парения (hover) при наведении мышки на карточку
-    $output .= '<style>.recipe-card:hover { transform: translateY(-5px); box-shadow: 0 8px 15px rgba(0,0,0,0.1) !important; }</style>';
+    $output .= '<style>.recipe-card:hover { transform: translateY(-5px); box-shadow: 0 8px 20px rgba(0,0,0,0.12) !important; }</style>';
 
     return $output;
 }
