@@ -1,8 +1,8 @@
 <?php
 /*
 Plugin Name: Allergen Profile Ultimate
-Version: 32.0
-Description: Final version: 100% English UI, Auto-import fixed, Smart Generics, Synonym Auto-fix + Recipe Custom Shortcode Grid.
+Version: 33.0
+Description: Final version: 100% English UI, Smart Generics, Synonym Auto-fix, Recipe Shortcode Grid + Protected Wikipedia API Tooltip.
 */
 
 // ==========================================
@@ -539,7 +539,8 @@ function allergen_engine_filter_recipes($content) {
         foreach ($forbidden_words as $word) {
             if (mb_strlen($word) > 2) {
                 $pattern = '/(\p{L}*' . preg_quote($word, '/') . '\p{L}*)(?![^<]*>)/iu';
-                $replacement = '<span style="color: #ff4d4d; font-weight: bold; text-decoration: underline;">$1</span>';
+                // ДОБАВЛЕН КЛАСС allergen-warning ДЛЯ WIKIPEDIA TOOLTIP
+                $replacement = '<span class="allergen-warning" style="color: #ff4d4d; font-weight: bold; text-decoration: underline; cursor: help;">$1</span>';
                 $content = preg_replace($pattern, $replacement, $content);
             }
         }
@@ -705,19 +706,12 @@ function render_allergen_page_pro() {
             global $wpdb;
             $wpdb->show_errors();
             
-            // ---------------------------------------------------------
-            // 📍 YOUR DATA SOURCES
-            // ---------------------------------------------------------
             $api_url_allergens = 'https://world.openfoodfacts.org/data/taxonomies/allergens.json';
-            
-            // 👇👇👇 PASTE YOUR RAW GITHUB LINK BETWEEN THE QUOTES 👇👇👇
             $api_url_synonyms = 'https://gist.githubusercontent.com/N1san-gif/f52ef75e4cd0e43c182351683686a55e/raw/3b6032d250811729b1f3142883ef1c3c7c634dca/gistfile1.txt'; 
-            // ---------------------------------------------------------
 
             $added_count = 0; 
             $synonyms_count = 0;
 
-            // 1. SMART CATEGORIES (Tailored for your fruits, meats, and mushrooms)
             $smart_categories = [
                 'Dairy & Milk'     => ['milk', 'dairy', 'cheese', 'butter', 'whey', 'lactose', 'casein'],
                 'Nuts & Peanuts'   => ['nut', 'almond', 'pecan', 'cashew', 'pistachio', 'macadamia', 'walnut', 'peanut'],
@@ -734,7 +728,6 @@ function render_allergen_page_pro() {
                 'Other / Uncategorized' => []
             ];
 
-            // Create groups in the DB if they don't exist
             $category_ids = [];
             foreach ($smart_categories as $cat_name => $keywords) {
                 $c_id = $wpdb->get_var($wpdb->prepare("SELECT group_id FROM allergen_groups WHERE group_name = %s", $cat_name));
@@ -745,7 +738,6 @@ function render_allergen_page_pro() {
                 $category_ids[$cat_name] = $c_id;
             }
 
-            // STEP 1: Download allergens
             $response_1 = wp_remote_get($api_url_allergens, array('timeout' => 30));
             if (!is_wp_error($response_1)) {
                 $allergens_data = json_decode(wp_remote_retrieve_body($response_1), true);
@@ -757,7 +749,6 @@ function render_allergen_page_pro() {
                             
                             $exists_id = $wpdb->get_var($wpdb->prepare("SELECT allergen_id FROM allergens WHERE allergen_name = %s", $main_name));
                             if (!$exists_id) {
-                                // Find the correct category
                                 $assigned_group_id = $category_ids['Other / Uncategorized'];
                                 $found_cat = false;
                                 foreach ($smart_categories as $cat_name => $keywords) {
@@ -780,7 +771,6 @@ function render_allergen_page_pro() {
                 }
             }
 
-            // STEP 2: Download synonyms from your GitHub Gist
             if (strpos($api_url_synonyms, 'http') === 0) {
                 $response_2 = wp_remote_get($api_url_synonyms, array('timeout' => 30));
                 if (!is_wp_error($response_2)) {
@@ -975,7 +965,6 @@ function allergen_display_recipes_shortcode($atts) {
     
     $output = '<div class="allergen-recipe-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px; margin-top: 20px;">';
 
-    // 1. ПОЛУЧАЕМ НАСТРОЙКИ ПОЛЬЗОВАТЕЛЯ
     $user_id = get_current_user_id();
     $forbidden_words = [];
     $is_strict = false;
@@ -994,26 +983,23 @@ function allergen_display_recipes_shortcode($atts) {
             $title = get_the_title();
             $link = get_permalink();
             $excerpt = wp_trim_words(get_the_excerpt(), 15, '...');
-            $full_content = get_the_content(); // Берем весь текст рецепта для сканирования
+            $full_content = get_the_content(); 
             $img_url = get_the_post_thumbnail_url(get_the_ID(), 'medium');
             
-            // 2. ИЩЕМ АЛЛЕРГЕНЫ В ТЕКСТЕ И ЗАГОЛОВКЕ
             $found_allergen = null;
             if (!empty($forbidden_words)) {
                 $text_to_check = $title . ' ' . $full_content;
                 $found_allergen = allergen_find_in_text($text_to_check, $forbidden_words);
             }
 
-            // 3. ЕСЛИ ВКЛЮЧЕН СТРОГИЙ РЕЖИМ (STRICT) - БЛОКИРУЕМ КАРТОЧКУ
             if ($found_allergen && $is_strict) {
                 $output .= '<div class="recipe-card blocked-card" style="border: 2px dashed #ff4d4d; border-radius: 8px; background: #fff0f0; padding: 20px; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align: center; color: #d9534f; opacity: 0.8; height: 100%; min-height: 280px;">';
                 $output .= '<span style="font-size: 30px; margin-bottom: 10px;">🚫</span>';
                 $output .= '<strong>Blocked by Profile</strong><br><small style="color: #666; margin-top: 5px;">Contains: <b style="color:#d9534f;">' . esc_html(ucfirst($found_allergen)) . '</b></small>';
                 $output .= '</div>';
-                continue; // Переходим к следующему рецепту
+                continue; 
             }
 
-            // 4. ЕСЛИ ВКЛЮЧЕН РЕЖИМ ПОДСВЕТКИ (HIGHLIGHT) - ДЕЛАЕМ КРАСНУЮ РАМКУ
             $card_style = 'border: 1px solid #eaeaea; border-radius: 8px; background: #fff; box-shadow: 0 4px 6px rgba(0,0,0,0.05); transition: transform 0.2s; position: relative; display: flex; flex-direction: column; height: 100%;';
             $warning_badge = '';
             
@@ -1024,7 +1010,6 @@ function allergen_display_recipes_shortcode($atts) {
             
             $img_html = $img_url ? '<img src="' . esc_url($img_url) . '" alt="' . esc_attr($title) . '" style="width: 100%; height: 180px; object-fit: cover; border-radius: 5px 5px 0 0; margin-bottom: 0;">' : '<div style="width: 100%; height: 180px; background: #f1f3f5; border-radius: 5px 5px 0 0; display: flex; align-items: center; justify-content: center; color: #aaa;">No image</div>';
 
-            // 5. ВЫВОДИМ САМУ КАРТОЧКУ
             $output .= '<div class="recipe-card" style="' . $card_style . '">';
             $output .= $warning_badge;
             $output .= '<a href="' . esc_url($link) . '" style="text-decoration: none; color: inherit; flex-grow: 1; display: flex; flex-direction: column;">';
@@ -1045,5 +1030,115 @@ function allergen_display_recipes_shortcode($atts) {
     $output .= '<style>.recipe-card:hover { transform: translateY(-5px); box-shadow: 0 8px 20px rgba(0,0,0,0.12) !important; }</style>';
 
     return $output;
+}
+
+// ==========================================
+// 9. PROTECTED WIKIPEDIA API INTEGRATION
+// ==========================================
+add_action('wp_enqueue_scripts', 'allergen_wiki_tooltip_assets');
+function allergen_wiki_tooltip_assets() {
+    if (!is_user_logged_in()) return;
+
+    wp_enqueue_script('jquery');
+    
+    $custom_css = "
+        .wiki-tooltip {
+            position: absolute;
+            background: #fff;
+            border: 1px solid #ccd0d4;
+            border-radius: 6px;
+            padding: 15px;
+            width: 300px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            z-index: 9999;
+            display: none;
+            font-family: sans-serif;
+            font-size: 13px;
+            color: #333;
+        }
+        .wiki-tooltip h4 { margin-top: 0; margin-bottom: 8px; font-size: 15px; color: #2271b1; }
+        .wiki-tooltip p { margin: 0; line-height: 1.5; }
+        .wiki-tooltip .wiki-loader { text-align: center; color: #888; font-style: italic; }
+    ";
+    wp_add_inline_style('wp-block-library', $custom_css);
+    
+    $ajax_url = admin_url('admin-ajax.php');
+    $nonce = wp_create_nonce('wiki_nonce');
+    
+    $custom_js = "
+        jQuery(document).ready(function($) {
+            $('body').append('<div id=\"wiki-tooltip\" class=\"wiki-tooltip\"></div>');
+            var tooltip = $('#wiki-tooltip');
+            var currentRequest = null;
+
+            $('.allergen-warning').hover(
+                function(e) {
+                    var rawText = $(this).text();
+                    var term = rawText.replace(/[🚨⚠️]/g, '').trim(); 
+                    
+                    tooltip.html('<div class=\"wiki-loader\">⏳ Загрузка из Wikipedia...</div>');
+                    tooltip.css({ top: e.pageY + 15 + 'px', left: e.pageX + 15 + 'px' }).fadeIn(200);
+
+                    currentRequest = $.ajax({
+                        url: '{$ajax_url}',
+                        type: 'POST',
+                        data: {
+                            action: 'get_wiki_info',
+                            term: term,
+                            security: '{$nonce}'
+                        },
+                        success: function(response) {
+                            if (response.success) {
+                                tooltip.html('<h4>' + response.data.title + '</h4><p>' + response.data.extract + '</p>');
+                            } else {
+                                tooltip.html('<p>❌ Информация об ингредиенте не найдена.</p>');
+                            }
+                        }
+                    });
+                },
+                function() {
+                    if (currentRequest) { currentRequest.abort(); }
+                    tooltip.fadeOut(200);
+                }
+            );
+
+            $('.allergen-warning').mousemove(function(e) {
+                tooltip.css({ top: e.pageY + 15 + 'px', left: e.pageX + 15 + 'px' });
+            });
+        });
+    ";
+    wp_add_inline_script('jquery', $custom_js);
+}
+
+add_action('wp_ajax_get_wiki_info', 'allergen_fetch_wikipedia_data');
+function allergen_fetch_wikipedia_data() {
+    check_ajax_referer('wiki_nonce', 'security');
+
+    if (!is_user_logged_in()) {
+        wp_send_json_error(['message' => 'Access Denied. Please log in.']);
+    }
+
+    $term = isset($_POST['term']) ? sanitize_text_field($_POST['term']) : '';
+    if (empty($term)) wp_send_json_error(['message' => 'No term provided.']);
+
+    $wiki_url = 'https://en.wikipedia.org/api/rest_v1/page/summary/' . urlencode($term);
+    
+    $response = wp_remote_get($wiki_url, ['timeout' => 5]);
+
+    if (is_wp_error($response)) {
+        wp_send_json_error(['message' => 'Wikipedia API connection failed.']);
+    }
+
+    $body = wp_remote_retrieve_body($response);
+    $data = json_decode($body, true);
+
+    if (isset($data['title']) && isset($data['extract'])) {
+        wp_send_json_success([
+            'title' => sanitize_text_field($data['title']),
+            'extract' => wp_html_excerpt($data['extract'], 250, '...') 
+        ]);
+    } else {
+        wp_send_json_error(['message' => 'Not found on Wikipedia.']);
+    }
 }
 ?>
