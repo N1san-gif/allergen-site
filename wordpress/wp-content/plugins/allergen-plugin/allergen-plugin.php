@@ -506,9 +506,10 @@ add_action('init', function() {
     }
 });
 
-// ==========================================
-// 4. RECIPE POST TYPE & CONTENT FILTER
-// ==========================================
+// =========================================================================
+// 4. RECIPE POST TYPE & CONTENT FILTER (WITH HOMEPAGE LOOP SUPPORT)
+// =========================================================================
+
 add_action('init', 'allergen_register_recipe_post_type');
 function allergen_register_recipe_post_type() {
     register_post_type('recipe', array(
@@ -522,40 +523,69 @@ function allergen_register_recipe_post_type() {
 
 add_filter('the_content', 'allergen_engine_filter_recipes');
 function allergen_engine_filter_recipes($content) {
-    if (!is_singular('recipe') || !is_user_logged_in()) return $content;
+    // 1. Проверяем базовые условия безопасности среды выполнения WordPress
+    if (!is_user_logged_in() || !is_main_query() || !in_the_loop()) {
+        return $content;
+    }
+
+    // 2. Разрешаем выполнение как на одиночных страницах, так и в циклах Главной/Фронт-страницы
+    if (!is_singular(array('recipe', 'post', 'page')) && !is_home() && !is_front_page()) {
+        return $content;
+    }
 
     $user_id = get_current_user_id();
     $forbidden_words = allergen_get_user_forbidden_words($user_id);
+    
+    if (empty($forbidden_words)) {
+        return $content;
+    }
+
+    // Проверяем наличие аллергенов в тексте поста
     $found_allergen = allergen_find_in_text($content, $forbidden_words);
 
     if ($found_allergen) {
-        $is_strict = get_user_meta($user_id, 'allergen_setting_strict', true) === '1';
+        $is_strict    = get_user_meta($user_id, 'allergen_setting_strict', true) === '1';
         $is_highlight = get_user_meta($user_id, 'allergen_setting_highlight', true) === '1';
 
-        usort($forbidden_words, function($a, $b) {
-            return mb_strlen($b) - mb_strlen($a);
-        });
-
-        foreach ($forbidden_words as $word) {
-            if (mb_strlen($word) > 2) {
-                $pattern = '/(\p{L}*' . preg_quote($word, '/') . '\p{L}*)(?![^<]*>)/iu';
-                // ДОБАВЛЕН КЛАСС allergen-warning ДЛЯ WIKIPEDIA TOOLTIP
-                $replacement = '<span class="allergen-warning" style="color: #ff4d4d; font-weight: bold; text-decoration: underline; cursor: help;">$1</span>';
-                $content = preg_replace($pattern, $replacement, $content);
-            }
-        }
-
+        // --- ВАРИАНТ 1: РЕЖИМ ЖЕСТКОЙ БЛОКИРОВКИ (STRICT MODE) ---
         if ($is_strict) {
-            return '<div class="allergen-server-block" style="border: 2px solid #ff4d4d; border-radius: 10px; padding: 30px; text-align: center; background: #fff0f0; margin: 20px 0;">
-                        <h3 style="color: #ff4d4d; margin-top: 0; font-size: 24px;">⚠️ STRICT MODE ACTIVE</h3>
-                        <p style="font-size: 16px; color: #333;">This recipe contains ingredients that are unsafe for your profile: <b>' . esc_html(ucfirst($found_allergen)) . '</b></p>
+            // Динамически адаптируем размеры плашки: компактные для главной страницы, крупные для одиночной
+            $padding   = is_singular() ? '30px' : '15px';
+            $margin    = is_singular() ? '20px 0' : '10px 0';
+            $title_size = is_singular() ? '24px' : '16px';
+            $text_size  = is_singular() ? '16px' : '13px';
+
+            return '<div class="allergen-server-block" style="border: 2px solid #ff4d4d; border-radius: 10px; padding: ' . $padding . '; text-align: center; background: #fff0f0; margin: ' . $margin . '; box-sizing: border-box;">
+                        <h3 style="color: #ff4d4d; margin-top: 0; font-size: ' . $title_size . '; font-weight: bold;">⚠️ STRICT MODE ACTIVE</h3>
+                        <p style="font-size: ' . $text_size . '; color: #333; margin-bottom: 0;">This content contains ingredients unsafe for your profile: <b>' . esc_html(ucfirst($found_allergen)) . '</b></p>
                     </div>';
         }
 
+        // --- ВАРИАНТ 2: РЕЖИМ ПОДСВЕТКИ (HIGHLIGHT MODE) ---
         if ($is_highlight) {
-            $warning_banner = '<div style="background: #fff0f0; color: #d9534f; padding: 15px; border-left: 5px solid #d9534f; margin-bottom: 20px; font-weight: bold; border-radius: 5px;">
+            // Сортируем слова по длине (по убыванию), чтобы "milk" не ломал слово "buttermilk"
+            usort($forbidden_words, function($a, $b) {
+                return mb_strlen($b) - mb_strlen($a);
+            });
+
+            // Выполняем регулярные выражения для подсвечивания опасных слов
+            foreach ($forbidden_words as $word) {
+                if (mb_strlen($word) > 2) {
+                    $pattern = '/(\p{L}*' . preg_quote($word, '/') . '\p{L}*)(?![^<]*>)/iu';
+                    $replacement = '<span class="allergen-warning" style="color: #ff4d4d; font-weight: bold; text-decoration: underline; cursor: help;">$1</span>';
+                    $content = preg_replace($pattern, $replacement, $content);
+                }
+            }
+
+            // Адаптируем верхний баннер-предупреждение под контекст (главная или одиночная страница)
+            $banner_padding = is_singular() ? '15px' : '8px 12px';
+            $banner_margin  = is_singular() ? '20px' : '10px';
+            $banner_font    = is_singular() ? '16px' : '12px';
+
+            $warning_banner = '<div style="background: #fff0f0; color: #d9534f; padding: ' . $banner_padding . '; border-left: 5px solid #d9534f; margin-bottom: ' . $banner_margin . '; font-weight: bold; border-radius: 5px; font-size: ' . $banner_font . '; box-sizing: border-box; width: 100%;">
                                    ⚠️ WARNING: Contains allergens (e.g. ' . esc_html(ucfirst($found_allergen)) . ')
                                </div>';
+            
             return $warning_banner . $content;
         }
     }
