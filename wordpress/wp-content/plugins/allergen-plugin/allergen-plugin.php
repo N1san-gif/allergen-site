@@ -1001,7 +1001,7 @@ function allergen_display_recipes_shortcode($atts) {
 
     $recipes_query = new WP_Query($args);
     
-    $output = '<div class="allergen-recipe-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px; margin-top: 20px;">';
+    $output = '<div class="allergen-recipe-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 20px; margin-top: 20px;">';
 
     $user_id = get_current_user_id();
     $forbidden_words = [];
