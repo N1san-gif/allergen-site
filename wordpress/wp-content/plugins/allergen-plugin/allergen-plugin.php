@@ -558,8 +558,8 @@ function allergen_engine_filter_recipes($content) {
     });
 
     foreach ($forbidden_words as $word) {
-        if (mb_strlen($word) > 2) {
-            $pattern = '/(\p{L}*' . preg_quote($word, '/') . '\p{L}*)(?![^<]*>)/iu';
+        if (mb_strlen($word) > 2) { 
+        $pattern = '/(?<!\p{L})(' . preg_quote($word, '/') . '\p{L}*)(?![^<]*>)/iu';
             $replacement = '<span class="allergen-warning" style="color: #ff4d4d; font-weight: bold; text-decoration: underline; cursor: help;">$1</span>';
             $content = preg_replace($pattern, $replacement, $content);
         }
@@ -990,7 +990,6 @@ add_filter( 'wp_mail_smtp_custom_options', function( $phpmailer ) {
 // ==========================================
 // 8. RECIPES SHORTCODE [allergen_recipes]
 // ==========================================
-add_shortcode('allergen_recipes', 'allergen_display_recipes_shortcode');
 
 function allergen_display_recipes_shortcode($atts) {
     $args = array(
@@ -1001,7 +1000,8 @@ function allergen_display_recipes_shortcode($atts) {
 
     $recipes_query = new WP_Query($args);
     
-    $output = '<div class="allergen-recipe-grid" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-top: 20px;">';
+    // ИЗМЕНЕНИЕ 1: minmax(220px, 1fr) заставляет карточки выстраиваться по 3-4 в ряд
+    $output = '<div class="allergen-recipe-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 20px; margin-top: 20px;">';
 
     $user_id = get_current_user_id();
     $forbidden_words = [];
@@ -1020,6 +1020,7 @@ function allergen_display_recipes_shortcode($atts) {
             
             $title = get_the_title();
             $link = get_permalink();
+            // Сначала обрезаем текст (чтобы очистить его от мусора)
             $excerpt = wp_trim_words(get_the_excerpt(), 15, '...');
             $full_content = get_the_content(); 
             $img_url = get_the_post_thumbnail_url(get_the_ID(), 'medium');
@@ -1030,6 +1031,7 @@ function allergen_display_recipes_shortcode($atts) {
                 $found_allergen = allergen_find_in_text($text_to_check, $forbidden_words);
             }
 
+            // УСЛОВИЕ 1: Если найден аллерген и включена блокировка (STRICT MODE)
             if ($found_allergen && $is_strict) {
                 $output .= '<div class="recipe-card blocked-card" style="border: 2px dashed #ff4d4d; border-radius: 8px; background: #fff0f0; padding: 20px; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align: center; color: #d9534f; opacity: 0.8; height: 100%; min-height: 280px;">';
                 $output .= '<span style="font-size: 30px; margin-bottom: 10px;">🚫</span>';
@@ -1038,23 +1040,48 @@ function allergen_display_recipes_shortcode($atts) {
                 continue; 
             }
 
+            // ИЗМЕНЕНИЕ 2: БАЗОВАЯ ПОДСВЕТКА СЛОВ В АНОНСАХ И ЗАГОЛОВКАХ
+            // Работает всегда при совпадении, даже если Strict и Highlight выключены!
+            if ($found_allergen && !empty($forbidden_words)) {
+                usort($forbidden_words, function($a, $b) {
+                    return mb_strlen($b) - mb_strlen($a);
+                });
+                foreach ($forbidden_words as $word) {
+                    if (mb_strlen($word) > 2) {
+                        $pattern = '/(?<!\p{L})(' . preg_quote($word, '/') . '\p{L}*)(?![^<]*>)/iu';
+                        $replacement = '<span class="allergen-warning" style="color: #ff4d4d; font-weight: bold; text-decoration: underline; cursor: help;">$1</span>';
+                        // Подсвечиваем и в заголовке, и в обрезанном описании
+                        $title = preg_replace($pattern, $replacement, $title);
+                        $excerpt = preg_replace($pattern, $replacement, $excerpt);
+                    }
+                }
+            }
+
+            // Базовые стили для обычной карточки
             $card_style = 'border: 1px solid #eaeaea; border-radius: 8px; background: #fff; box-shadow: 0 4px 6px rgba(0,0,0,0.05); transition: transform 0.2s; position: relative; display: flex; flex-direction: column; height: 100%;';
             $warning_badge = '';
             
+            // УСЛОВИЕ 2: Если включен режим HIGHLIGHT MODE
             if ($found_allergen && $is_highlight) {
+                // Делаем рамку красной и вешаем бейдж в угол
                 $card_style = 'border: 3px solid #ff4d4d; border-radius: 8px; background: #fffdfd; box-shadow: 0 4px 15px rgba(255,77,77,0.15); transition: transform 0.2s; position: relative; display: flex; flex-direction: column; height: 100%;';
                 $warning_badge = '<div style="position: absolute; top: 10px; right: 10px; background: #ff4d4d; color: white; padding: 5px 10px; border-radius: 6px; font-size: 12px; font-weight: bold; z-index: 2; box-shadow: 0 2px 5px rgba(0,0,0,0.2);">⚠️ ' . esc_html(ucfirst($found_allergen)) . '</div>';
             }
             
-            $img_html = $img_url ? '<img src="' . esc_url($img_url) . '" alt="' . esc_attr($title) . '" style="width: 100%; height: 180px; object-fit: cover; border-radius: 5px 5px 0 0; margin-bottom: 0;">' : '<div style="width: 100%; height: 180px; background: #f1f3f5; border-radius: 5px 5px 0 0; display: flex; align-items: center; justify-content: center; color: #aaa;">No image</div>';
+            // Формируем картинку
+            $img_html = $img_url ? '<img src="' . esc_url($img_url) . '" alt="' . esc_attr(strip_tags($title)) . '" style="width: 100%; height: 180px; object-fit: cover; border-radius: 5px 5px 0 0; margin-bottom: 0;">' : '<div style="width: 100%; height: 180px; background: #f1f3f5; border-radius: 5px 5px 0 0; display: flex; align-items: center; justify-content: center; color: #aaa;">No image</div>';
 
+            // Сборка HTML карточки
             $output .= '<div class="recipe-card" style="' . $card_style . '">';
             $output .= $warning_badge;
             $output .= '<a href="' . esc_url($link) . '" style="text-decoration: none; color: inherit; flex-grow: 1; display: flex; flex-direction: column;">';
             $output .= $img_html;
             $output .= '<div style="padding: 15px; flex-grow: 1;">';
-            $output .= '<h3 style="margin: 0 0 10px 0; font-size: 18px; color: #333;">' . esc_html($title) . '</h3>';
-            $output .= '<p style="margin: 0; font-size: 14px; color: #666; line-height: 1.5;">' . esc_html($excerpt) . '</p>';
+            
+            // ИЗМЕНЕНИЕ 3: Используем wp_kses_post, чтобы HTML теги <span> работали и подсвечивали текст!
+            $output .= '<h3 style="margin: 0 0 10px 0; font-size: 18px; color: #333;">' . wp_kses_post($title) . '</h3>';
+            $output .= '<p style="margin: 0; font-size: 14px; color: #666; line-height: 1.5;">' . wp_kses_post($excerpt) . '</p>';
+            
             $output .= '</div>';
             $output .= '</a>';
             $output .= '</div>';
@@ -1065,10 +1092,13 @@ function allergen_display_recipes_shortcode($atts) {
     }
 
     $output .= '</div>';
+    
+    // Эффект парения при наведении мышкой на карточку
     $output .= '<style>.recipe-card:hover { transform: translateY(-5px); box-shadow: 0 8px 20px rgba(0,0,0,0.12) !important; }</style>';
 
     return $output;
 }
+add_shortcode('allergen_recipes', 'allergen_display_recipes_shortcode');
 
 // ==========================================
 // 9. PROTECTED WIKIPEDIA API INTEGRATION
