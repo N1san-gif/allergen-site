@@ -20,7 +20,7 @@ function allergen_get_user_forbidden_words($user_id) {
         LEFT JOIN allergen_aliases al ON a.allergen_id = al.allergen_id
         WHERE a.allergen_id IN ($placeholders)
         GROUP BY a.allergen_id
-    ", $saved_ids));
+    ", ...$saved_ids));
 
     $forbidden_words = [];
 
@@ -447,27 +447,76 @@ document.addEventListener("DOMContentLoaded", function() {
             allIds.forEach(id => removeItem(id));
         };
 
+       // Функция для вычисления опечаток (Левенштейн)
+        function getEditDistance(a, b) {
+            if (a.length === 0) return b.length;
+            if (b.length === 0) return a.length;
+            var matrix = [];
+            for (var i = 0; i <= b.length; i++) { matrix[i] = [i]; }
+            for (var j = 0; j <= a.length; j++) { matrix[0][j] = j; }
+            for (var i = 1; i <= b.length; i++) {
+                for (var j = 1; j <= a.length; j++) {
+                    if (b.charAt(i - 1) == a.charAt(j - 1)) {
+                        matrix[i][j] = matrix[i - 1][j - 1];
+                    } else {
+                        matrix[i][j] = Math.min(
+                            matrix[i - 1][j - 1] + 1,
+                            Math.min(matrix[i][j - 1] + 1, matrix[i - 1][j] + 1)
+                        );
+                    }
+                }
+            }
+            return matrix[b.length][a.length];
+        }
+
+        // Обновленная функция поиска и фильтрации
         const filterFn = () => {
             let rawQuery = document.getElementById("allergen-search").value.toLowerCase().trim();
-            let q = rawQuery;
-            if (q.endsWith('es') && q.length > 3) {
-                q = q.slice(0, -2);
-            } else if (q.endsWith('s') && q.length > 2) {
-                q = q.slice(0, -1);
-            }
-
             const cat = document.getElementById("group-filter").value;
 
             availBox.querySelectorAll('.list-item-full').forEach(el => {
+                // Если элемент уже выбран - скрываем
                 if (selectedData.find(x => x.id === parseInt(el.dataset.id))) {
                     el.style.display = "none";
                     return;
                 }
+                
                 const text = el.innerText.toLowerCase();
                 const aliases = (el.dataset.aliases || "").toLowerCase();
-                const mS = text.includes(rawQuery) || text.includes(q) || aliases.includes(rawQuery) || aliases.includes(q);
+                
+                // Проверка категории
                 const mC = (cat === 'all' || el.dataset.group === cat);
-                el.style.display = (mS && mC) ? "block" : "none";
+                if (!mC) {
+                    el.style.display = "none";
+                    return;
+                }
+
+                // Пустой запрос
+                if (rawQuery === "") {
+                    el.style.display = "block";
+                    return;
+                }
+
+                // Прямое совпадение
+                if (text.includes(rawQuery) || aliases.includes(rawQuery)) {
+                    el.style.display = "block";
+                    return;
+                }
+
+                // Умный поиск с правом на ошибку
+                var allowedErrors = (rawQuery.length <= 4) ? 1 : 2;
+                var words = text.split(/\s+/);
+                var matchFound = false;
+
+                for (var i = 0; i < words.length; i++) {
+                    var wordPart = words[i].substring(0, rawQuery.length);
+                    if (getEditDistance(rawQuery, wordPart) <= allowedErrors) {
+                        matchFound = true;
+                        break;
+                    }
+                }
+
+                el.style.display = matchFound ? "block" : "none";
             });
         };
 
@@ -527,7 +576,7 @@ add_filter('the_excerpt', 'allergen_engine_filter_recipes', 10);
 
 function allergen_engine_filter_recipes($content) {
     
-    if (!is_user_logged_in() || !in_the_loop()) {
+    if (!is_user_logged_in()) {
         return $content;
     }
 
