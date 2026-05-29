@@ -1,6 +1,6 @@
 <?php
 /*
-Plugin Name: Allergen Profile Ultimate
+Plugin Name: User-Centric Allergen Protection System
 Version: 33.0
 Description: Final version: 100% English UI, Smart Generics, Synonym Auto-fix, Recipe Shortcode Grid + Protected Wikipedia API Tooltip.
 */
@@ -521,17 +521,17 @@ function allergen_register_recipe_post_type() {
     ));
 }
 
-// Привязываемся к выводу контента и анонсов с базовым приоритетом
+
 add_filter('the_content', 'allergen_engine_filter_recipes', 10);
 add_filter('the_excerpt', 'allergen_engine_filter_recipes', 10);
 
 function allergen_engine_filter_recipes($content) {
-    // 1. Обязательные проверки: пользователь вошел и мы находимся строго внутри цикла вывода записей
+    
     if (!is_user_logged_in() || !in_the_loop()) {
         return $content;
     }
 
-    // 2. Фильтруем только рецепты (recipe) и обычные записи (post)
+    
     if (!in_array(get_post_type(), array('recipe', 'post'), true)) {
         return $content;
     }
@@ -543,7 +543,6 @@ function allergen_engine_filter_recipes($content) {
         return $content;
     }
 
-    // Проверяем наличие аллергенов в тексте
     $found_allergen = allergen_find_in_text($content, $forbidden_words);
     if (!$found_allergen) {
         return $content;
@@ -552,7 +551,7 @@ function allergen_engine_filter_recipes($content) {
     $is_strict    = get_user_meta($user_id, 'allergen_setting_strict', true) === '1';
     $is_highlight = get_user_meta($user_id, 'allergen_setting_highlight', true) === '1';
 
-    // --- ШАГ 1: ПОДСВЕТКА СЛОВ (Выполняется всегда при нахождении совпадения) ---
+
     usort($forbidden_words, function($a, $b) {
         return mb_strlen($b) - mb_strlen($a);
     });
@@ -565,26 +564,26 @@ function allergen_engine_filter_recipes($content) {
         }
     }
 
-    // --- ШАГ 2: ОТОБРАЖЕНИЕ БАННЕРОВ И БЛОКИРОВОК ---
+    
     $is_single = is_singular(array('recipe', 'post'));
 
-    // Режим Strict Mode (Полная блокировка)
+  
     if ($is_strict) {
         if ($is_single) {
-            // Полноразмерный красивый блок на странице самого рецепта
+      
             return '<div class="allergen-server-block" style="border: 2px solid #ff4d4d; border-radius: 10px; padding: 30px; text-align: center; background: #fff0f0; margin: 20px 0; clear: both; width: 100%; box-sizing: border-box; display: block;">
                         <h3 style="color: #ff4d4d; margin-top: 0; font-size: 24px; font-weight: bold; display: block;">⚠️ STRICT MODE ACTIVE</h3>
                         <p style="font-size: 16px; color: #333; margin: 10px 0 0 0; display: block;">This recipe contains ingredients that are unsafe for your profile: <b>' . esc_html(ucfirst($found_allergen)) . '</b></p>
                     </div>';
         } else {
-            // Компактная плашка для главной страницы (чтобы контент не исчезал полностью и не ломал сетку темы)
+  
             return '<div class="allergen-server-block" style="border: 1px solid #ff4d4d; border-radius: 6px; padding: 10px; text-align: center; background: #fff0f0; margin: 10px 0; font-size: 14px; color: #ff4d4d; font-weight: bold; width: 100%; box-sizing: border-box; display: block;">
                         ⚠️ Blocked: Contains ' . esc_html(ucfirst($found_allergen)) . '
                     </div>';
         }
     }
 
-    // Режим Highlight Mode (Предупреждающий баннер сверху текста)
+  
     if ($is_highlight) {
         if ($is_single) {
             $warning_banner = '<div style="background: #fff0f0; color: #d9534f; padding: 15px; border-left: 5px solid #d9534f; margin-bottom: 20px; font-weight: bold; border-radius: 5px; clear: both; width: 100%; box-sizing: border-box; display: block;">
@@ -597,7 +596,7 @@ function allergen_engine_filter_recipes($content) {
         }
     }
 
-    // Если режимы плашек выключены, просто отдаем текст с подсвеченными словами
+  
     return $content;
 }
 
