@@ -261,6 +261,7 @@ function allergen_profile_final_integrated_render() {
             </div>
         </div>
         <form method="post" id="allergen-hidden-form">
+    <input type="hidden" name="custom_return_url" value="<?php echo esc_attr($_SERVER['REQUEST_URI']); ?>">
             <div class="protection-settings" style="margin-top: 20px; padding: 20px; background: #fdf2f2; border-radius: 8px; border: 1px solid #ffcccc;">
                 <label style="font-weight: bold; color: #333; margin-bottom: 15px; display: block; border-bottom: 1px solid #f5dcdc; padding-bottom: 10px;">🛡️ Protection Settings (Independent):</label>
                 <div class="toggle-row">
@@ -350,9 +351,28 @@ document.addEventListener("DOMContentLoaded", function() {
     
     const urlParams = new URLSearchParams(window.location.search);
     if (urlParams.get('allergen_updated') === '1') {
+        
         modal.style.display = "block";
-        const newUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
+
+        urlParams.delete('allergen_updated');
+        const newSearch = urlParams.toString() ? '?' + urlParams.toString() : '';
+        const newUrl = window.location.protocol + "//" + window.location.host + window.location.pathname + newSearch;
         window.history.replaceState({}, document.title, newUrl);
+
+        const modalTitle = document.querySelector('.modal-title');
+        if (modalTitle) {
+            const successMsg = document.createElement('div');
+            successMsg.innerHTML = '✅ Settings successfully saved!';
+            successMsg.style.cssText = 'background: #d4edda; color: #155724; padding: 12px; margin-bottom: 20px; border-radius: 6px; border: 1px solid #c3e6cb; font-weight: bold; text-align: center; font-size: 15px;';
+            
+            modalTitle.parentNode.insertBefore(successMsg, modalTitle.nextSibling);
+            
+            setTimeout(() => {
+                successMsg.style.transition = 'opacity 0.5s ease';
+                successMsg.style.opacity = '0';
+                setTimeout(() => successMsg.remove(), 500);
+            }, 3000);
+        }
     }
     
     document.getElementById("allergen-trigger-icon").onclick = () => { modal.style.display = "block"; };
@@ -447,7 +467,6 @@ document.addEventListener("DOMContentLoaded", function() {
             allIds.forEach(id => removeItem(id));
         };
 
-       // Функция для вычисления опечаток (Левенштейн)
         function getEditDistance(a, b) {
             if (a.length === 0) return b.length;
             if (b.length === 0) return a.length;
@@ -469,13 +488,11 @@ document.addEventListener("DOMContentLoaded", function() {
             return matrix[b.length][a.length];
         }
 
-        // Обновленная функция поиска и фильтрации
         const filterFn = () => {
             let rawQuery = document.getElementById("allergen-search").value.toLowerCase().trim();
             const cat = document.getElementById("group-filter").value;
 
             availBox.querySelectorAll('.list-item-full').forEach(el => {
-                // Если элемент уже выбран - скрываем
                 if (selectedData.find(x => x.id === parseInt(el.dataset.id))) {
                     el.style.display = "none";
                     return;
@@ -484,26 +501,21 @@ document.addEventListener("DOMContentLoaded", function() {
                 const text = el.innerText.toLowerCase();
                 const aliases = (el.dataset.aliases || "").toLowerCase();
                 
-                // Проверка категории
+
                 const mC = (cat === 'all' || el.dataset.group === cat);
                 if (!mC) {
                     el.style.display = "none";
                     return;
                 }
 
-                // Пустой запрос
                 if (rawQuery === "") {
                     el.style.display = "block";
                     return;
                 }
-
-                // Прямое совпадение
                 if (text.includes(rawQuery) || aliases.includes(rawQuery)) {
                     el.style.display = "block";
                     return;
                 }
-
-                // Умный поиск с правом на ошибку
                 var allowedErrors = (rawQuery.length <= 4) ? 1 : 2;
                 var words = text.split(/\s+/);
                 var matchFound = false;
@@ -554,7 +566,6 @@ add_action('init', function() {
         exit;
     }
 });
-
 // =========================================================================
 // 4. RECIPE POST TYPE & CONTENT FILTER (UNIVERSAL & STABLE)
 // =========================================================================
